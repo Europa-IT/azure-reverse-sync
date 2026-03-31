@@ -29,6 +29,8 @@ $connectParams = @{
     NoWelcome = $true
 }
 
+# TODO add authentication options such as interactive OAuth flow
+
 if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
     # ── Certificate auth (preferred) ──────────────────────────────────────────
     $cert = Get-Item "Cert:\LocalMachine\My\$($cfg.CertificateThumbprint)" -ErrorAction SilentlyContinue
@@ -62,6 +64,7 @@ if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
     }
 }
 
+# TODO add scopes to Connect-MgGraph call
 Connect-MgGraph @connectParams
 
 $context = Get-MgContext

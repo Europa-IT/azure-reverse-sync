@@ -20,6 +20,8 @@ $targetOU = $cfg.LocalAD.TargetOU
 
 Write-SyncLog "=== Sync-Users started ==="
 
+# TODO Add an optional filter to only sync licensed Azure users. Keep the guest account exclusion.
+# TODO Possible design idea: filter by group in Azure.
 $graphUsers = Get-MgUser -All -Property @(
     'id','displayName','givenName','surname','userPrincipalName',
     'mail','department','jobTitle','mobilePhone','officeLocation',

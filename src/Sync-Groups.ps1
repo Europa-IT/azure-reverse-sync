@@ -44,9 +44,8 @@ foreach ($azGroup in $azureGroups) {
                     GroupCategory   = 'Security'
                     OtherAttributes = @{ extensionAttribute1 = $azGroup.Id }
                 }
-                if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }
-                New-ADGroup @newGroupParams
-                $adGroup = Get-ADGroup -Filter { extensionAttribute1 -eq $azGroup.Id } -Server $adSrv
+                if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }   
+                $adGroup = New-ADGroup @newGroupParams -PassThru
                 Write-SyncLog "Created group: $groupName"
             }
             $stats.Created++
@@ -68,6 +67,7 @@ foreach ($azGroup in $azureGroups) {
         }
 
         # Build map: Azure OID → AD user DN for current AD members
+        # TODO reduce loops here
         $adMemberByAzureOid = @{}
         foreach ($adMember in $adMembers) {
             $adUser = Get-ADUser -Identity $adMember.DistinguishedName `

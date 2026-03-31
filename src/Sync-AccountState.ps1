@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Syncs Azure AD account enable/disable state to on-premises Active Directory.
+    Syncs Azure AD account to on-premises Active Directory.
 .DESCRIPTION
     For every on-prem AD user that was created by this tool (identified by extensionAttribute1
     containing an Azure AD Object ID):
@@ -28,6 +28,7 @@ $managedAdUsers = Get-ADUser -Filter { extensionAttribute1 -like '*-*-*-*-*' } `
                              -Properties extensionAttribute1, Enabled, DistinguishedName
 
 # Build a Set of Azure AD OIDs for fast O(1) lookup
+# TODO Store Get-MgUser result to reduce slow Graph API calls instead of using an ID map. Lookup table speed is irrelevant in comparison.
 $azureUserIds = [System.Collections.Generic.HashSet[string]]::new()
 (Get-MgUser -All -Property 'id,accountEnabled' | ForEach-Object {
     [void]$azureUserIds.Add($_.Id)

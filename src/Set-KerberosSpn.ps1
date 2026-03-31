@@ -41,6 +41,7 @@ if (-not (Test-Path $outPath)) {
 
 $stats = @{ SPNsRegistered = 0; KeytabsExported = 0; Skipped = 0; Errors = 0 }
 
+# TODO Modify logic to automatically register users synced from Azure AD as service accounts
 foreach ($sa in $cfg.Kerberos.ServiceAccounts) {
     $sam         = $sa.SamAccountName
     $fqdn        = $sa.FQDN

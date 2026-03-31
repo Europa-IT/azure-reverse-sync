@@ -61,6 +61,7 @@ if (-not (Test-Path $modulePath)) {
 Import-Module $modulePath -Force
 
 # ── Load configuration ────────────────────────────────────────────────────────
+# TODO review dryrun parameterization, this looks a bit suspect
 $cfgArgs = @{}
 if ($ConfigPath) { $cfgArgs['ConfigPath'] = $ConfigPath }
 $script:Config = Get-SyncConfig @cfgArgs
