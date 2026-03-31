@@ -1,17 +1,12 @@
 {
-  "_comment": "Copy this file to sync-config.json and fill in your values. sync-config.json is gitignored.",
-
   "AzureAD": {
-    "_comment": "App Registration (service principal) in your Azure AD tenant.",
     "TenantId": "<your-tenant-id>",
     "ClientId": "<your-app-registration-client-id>",
     "CertificateThumbprint": "<thumbprint-of-cert-in-LocalMachine-My-store>",
-    "_comment_secret": "Use CertificateThumbprint (preferred) OR ClientSecret. Store secrets in Windows Credential Manager, not here.",
     "ClientSecret": ""
   },
 
   "LocalAD": {
-    "_comment": "On-premises Active Directory connection settings.",
     "Server": "dc01.corp.example.com",
     "TargetOU": "OU=SyncedUsers,DC=corp,DC=example,DC=com",
     "GroupsOU": "OU=SyncedGroups,DC=corp,DC=example,DC=com",
@@ -19,7 +14,6 @@
   },
 
   "AttributeMap": {
-    "_comment": "Maps Azure AD (Graph) property names to on-prem AD attribute names.",
     "DisplayName":       "DisplayName",
     "GivenName":         "GivenName",
     "Surname":           "Surname",
@@ -33,12 +27,10 @@
   },
 
   "Kerberos": {
-    "_comment": "Realm must be the AD domain in UPPERCASE. KeytabOutputPath must be ACL'd to the service account.",
     "Realm": "CORP.EXAMPLE.COM",
     "KeytabOutputPath": "C:\\keytabs",
     "ServiceAccounts": [
       {
-        "_comment": "One entry per service that needs a Kerberos keytab.",
         "SamAccountName": "svc-fileserver",
         "FQDN": "fileserver01.corp.example.com",
         "ServiceClass": "cifs"
@@ -52,27 +44,20 @@
   },
 
   "PKINIT": {
-    "_comment": "Certificate-based Kerberos authentication (no password required for end users).",
     "Enabled": true,
     "CACertificatePath": "C:\\certs\\issuing-ca.cer",
-    "_comment_source": "CertificateSource: 'EntraCBA' = fetch from Graph authentication/certificateMethods endpoint.",
     "CertificateSource": "EntraCBA"
   },
 
   "EntraCloudSync": {
-    "_comment": "Microsoft Entra Cloud Sync agent — authoritative source for password hashes / Kerberos keys.",
-    "_comment_installer": "Download the agent installer from the Entra portal (Entra ID > Hybrid Management > Cloud Sync) and place it at AgentInstallerPath before running Install-EntraCloudSync.ps1.",
     "AgentInstallerPath": "C:\\temp\\AADConnectProvisioningAgentSetup.exe",
     "ProvisioningJobTemplateId": "AAD2ADProvisioning",
-    "_comment_scope": "SyncScope: 'AllUsers' or a specific Azure AD Group Object ID.",
     "SyncScope": "AllUsers"
   },
 
   "Sync": {
     "DryRun": false,
-    "_comment_dryrun": "Set DryRun to true to log all changes without writing to AD.",
     "DisableDeletedUsers": true,
-    "_comment_disabled": "When true, users removed from Azure AD are disabled in on-prem AD (not deleted).",
     "LogPath": ".\\logs\\sync.log"
   }
 }

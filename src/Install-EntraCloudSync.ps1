@@ -2,10 +2,17 @@
 .SYNOPSIS
     Silently installs the Microsoft Entra Cloud Sync provisioning agent.
 .DESCRIPTION
-    The Entra Cloud Sync agent is Microsoft's lightweight provisioning agent that enables
-    inbound provisioning from Azure AD to on-prem AD, with Azure AD as the authoritative source.
-    Once installed and registered, it handles the privileged sync of NTLM hashes and Kerberos
-    key material — something a custom script cannot do via Graph API alone.
+    The Entra Cloud Sync agent is Microsoft's lightweight provisioning agent. In this
+    project it is used to provision cloud security groups from Azure AD to on-prem AD
+    (group writeback), replacing the deprecated Group Writeback v2 in AAD Connect.
+
+    SCOPE: Entra Cloud Sync does NOT provision users or synchronize password hashes /
+    Kerberos keys from Azure AD to on-prem AD. User attributes are synced by this
+    tool's own scripts (Sync-Users.ps1). For password-free Kerberos authentication,
+    use PKINIT via Sync-UserCertificates.ps1.
+
+    Reference:
+      https://learn.microsoft.com/en-us/entra/identity/hybrid/cloud-sync/how-to-configure-entra-to-active-directory
 
     This script:
       1. Validates the installer exists at config.EntraCloudSync.AgentInstallerPath
@@ -83,7 +90,7 @@ Write-SyncLog "     It should have launched automatically, or run:" -Level WARN
 Write-SyncLog "     C:\Program Files\Microsoft Azure AD Connect Provisioning Agent\AADConnectProvisioningAgent.Wizard.exe" -Level WARN
 Write-SyncLog "  2. Sign in with a Hybrid Identity Administrator account." -Level WARN
 Write-SyncLog "  3. Complete the wizard to register this server with your tenant." -Level WARN
-Write-SyncLog "  4. Then run: .\src\Invoke-AzureSync.ps1 -SetupEntraCloudSync (without -InstallAgent)" -Level WARN
-Write-SyncLog "     to configure the provisioning job via Graph API." -Level WARN
+Write-SyncLog "  4. Then run: .\src\Invoke-AzureSync.ps1 -ConfigureCloudSync" -Level WARN
+Write-SyncLog "     to configure the group provisioning job via Graph API." -Level WARN
 Write-SyncLog ""
 Write-SyncLog "=== Install-EntraCloudSync complete ==="

@@ -1,22 +1,53 @@
-# Entra Cloud Sync Setup — Azure AD as Authoritative Source
+# Entra Cloud Sync Setup — Cloud Security Group Writeback to On-Prem AD
 
-This guide covers the one-time setup required to configure **Microsoft Entra Cloud Sync** so that Azure AD is the authoritative source for on-premises Active Directory user credentials (NTLM hashes and Kerberos AES keys).
+This guide covers the one-time setup required to configure **Microsoft Entra Cloud Sync**
+to provision cloud security groups from Azure AD into on-prem Active Directory.
 
-Without this step, this tool can sync user attributes and groups to on-prem AD, but end users will **not** be able to obtain Kerberos TGTs using their Azure AD password. See [PKINIT](../README.md#kerberos-authentication-paths) as an alternative that avoids the password requirement entirely.
+## What Entra Cloud Sync does (and does not do) in this project
 
----
+Per Microsoft's official documentation
+([learn.microsoft.com/entra/identity/hybrid/cloud-sync/how-to-configure-entra-to-active-directory](https://learn.microsoft.com/en-us/entra/identity/hybrid/cloud-sync/how-to-configure-entra-to-active-directory)):
 
-## What Entra Cloud Sync does in this setup
+> *"You can use Microsoft Entra Cloud Sync to provision cloud security groups to
+> on-premises Active Directory Domain Services (AD DS)."*
 
 | Synced by Entra Cloud Sync agent | Synced by this tool (`Invoke-AzureSync.ps1`) |
 |---|---|
-| NTLM password hashes | Display name, email, department, title, phone |
-| Kerberos AES encryption keys | Security group memberships |
-| Core user object creation (optional) | Account enable/disable state |
+| Cloud security groups → on-prem AD groups | User attributes (display name, email, department, etc.) |
+| Group membership for those groups | Account enable/disable state |
+| | Security group memberships (via `Sync-Groups.ps1`) |
 | | PKINIT certificates (`userCertificate`) |
 | | Kerberos SPNs + keytab files |
 
-The agent runs as a Windows service and maintains its own sync cycle. This tool's scripts run separately on a schedule and do not conflict with the agent.
+**What Entra Cloud Sync does NOT do:**
+
+- User provisioning from Azure AD to on-prem AD — not a supported scenario
+- Password hash synchronization from Azure AD to on-prem AD — not supported
+- Kerberos key synchronization from Azure AD to on-prem AD — not supported
+
+Password hash sync flows in one direction only: **on-prem AD → Azure AD**, via the
+classic AAD Connect / Cloud Sync agent configuration. There is no supported Microsoft
+mechanism to reverse this flow.
+
+**Kerberos authentication for end users:** Use PKINIT (`Sync-UserCertificates.ps1`).
+Users authenticate to the on-prem KDC with their Azure AD certificate rather than a
+password, eliminating the password-matching requirement entirely. See the
+[PKINIT section of README.md](../README.md#kerberos-authentication-paths).
+
+---
+
+## When to use this setup
+
+Set up Entra Cloud Sync group writeback when you have cloud-only security groups in
+Azure AD (not sourced from on-prem AD) that need to be available in on-prem AD for:
+
+- Resource ACLs on on-prem file servers
+- On-prem application group membership checks
+- Kerberos resource authorization (group SID in PAC)
+
+If your security groups are already mastered in on-prem AD and synced up to Azure AD
+via AAD Connect, you do not need this step — `Sync-Groups.ps1` handles those via the
+Graph API already.
 
 ---
 
@@ -24,24 +55,26 @@ The agent runs as a Windows service and maintains its own sync cycle. This tool'
 
 | Requirement | Details |
 |---|---|
-| Azure AD role | **Hybrid Identity Administrator** (for agent registration and provisioning job creation) |
-| On-prem AD role | **Domain Admin** or delegated write access to the target OU |
+| Azure AD role | **Hybrid Identity Administrator** |
+| On-prem AD role | **Domain Admin** or delegated Create/Write/Delete on the groups OU |
 | Windows Server | Domain-joined; .NET Framework 4.7.2 or later |
 | Network | Outbound HTTPS (443) to `*.msappproxy.net` and `*.servicebus.windows.net` |
 | This tool configured | `sync-config.json` must exist with valid `AzureAD` and `LocalAD` values |
 
 ---
 
-## Step 1 — Prepare the Azure AD App Registration
+## Step 1 — Grant additional Graph permissions
 
-The Entra Cloud Sync agent registers its own Enterprise Application in your tenant during setup. For the **Graph API calls** in `Configure-EntraCloudSync.ps1` to manage the provisioning job, your existing App Registration (defined in `sync-config.json`) needs two additional permissions:
+`Configure-EntraCloudSync.ps1` calls the Graph synchronization API to create and start
+the provisioning job. Add these two permissions to the App Registration defined in
+`sync-config.json`:
 
-In the Azure portal, go to **App registrations → your app → API permissions** and add:
+In the Azure portal: **App registrations → your app → API permissions → Add**
 
-| Permission | Type | Why |
-|---|---|---|
-| `Synchronization.ReadWrite.All` | Application | Create and start the provisioning job |
-| `Application.Read.All` | Application | Look up the agent's service principal |
+| Permission | Type |
+|---|---|
+| `Synchronization.ReadWrite.All` | Application |
+| `Application.Read.All` | Application |
 
 Grant admin consent after adding both.
 
@@ -49,10 +82,10 @@ Grant admin consent after adding both.
 
 ## Step 2 — Download the agent installer
 
-1. Sign in to the [Azure portal](https://portal.azure.com) as a Hybrid Identity Administrator.
+1. Sign in to the Azure portal as a Hybrid Identity Administrator.
 2. Navigate to: **Microsoft Entra ID → Hybrid Management → Microsoft Entra Connect → Cloud Sync**
 3. Click **Download agent**.
-4. Save the installer (`AADConnectProvisioningAgentSetup.exe`) to the path set in `sync-config.json`:
+4. Save `AADConnectProvisioningAgentSetup.exe` to the path in `sync-config.json`:
    ```json
    "EntraCloudSync": {
      "AgentInstallerPath": "C:\\temp\\AADConnectProvisioningAgentSetup.exe"
@@ -69,33 +102,32 @@ Run on the domain-joined Windows Server **as Administrator**:
 .\src\Invoke-AzureSync.ps1 -InstallAgent
 ```
 
-This silently installs the `AADConnectProvisioningAgent` Windows service. The script will print the next step when complete.
-
-**Verify installation:**
+Verify:
 ```powershell
 Get-Service AADConnectProvisioningAgent
+# Expected: Status = Running
 ```
-Expected status: `Running`.
 
 ---
 
 ## Step 4 — Register the agent with your tenant (interactive)
 
-After installation, the registration wizard must be completed interactively by a **Hybrid Identity Administrator**. It cannot be fully scripted because it requires an OAuth device-code or browser authentication flow.
+Registration requires an interactive sign-in by a **Hybrid Identity Administrator** and
+cannot be scripted.
 
-If the wizard did not open automatically:
+If the wizard did not open automatically after installation:
 ```
 C:\Program Files\Microsoft Azure AD Connect Provisioning Agent\AADConnectProvisioningAgent.Wizard.exe
 ```
 
 In the wizard:
 1. Sign in with a Hybrid Identity Administrator account.
-2. Select **Microsoft Entra ID → Active Directory** (the Azure AD to on-prem AD direction — not the reverse).
-3. Provide the on-prem AD credentials when prompted (Domain Admin or delegated).
+2. Select the **group provisioning** configuration (cloud security groups to AD).
+3. Provide on-prem AD credentials when prompted.
 4. Complete and close the wizard.
 
-**Verify registration** in the Entra portal:
-> Entra ID → Hybrid Management → Microsoft Entra Connect → Cloud Sync → Agents
+Verify in the Entra portal:
+> **Entra ID → Hybrid Management → Microsoft Entra Connect → Cloud Sync → Agents**
 
 The agent should appear as **Active**.
 
@@ -103,39 +135,34 @@ The agent should appear as **Active**.
 
 ## Step 5 — Configure the provisioning job
 
-Once the agent is registered, run:
-
 ```powershell
 .\src\Invoke-AzureSync.ps1 -ConfigureCloudSync
 ```
 
-This calls `Configure-EntraCloudSync.ps1`, which:
-1. Finds the service principal the agent registered (searched by display name, not hard-coded app ID).
-2. Creates a provisioning job with template `AAD2ADProvisioning` if one does not already exist.
+This runs `Configure-EntraCloudSync.ps1`, which:
+1. Finds the service principal registered by the agent (searched by display name).
+2. Creates a provisioning job with template `AAD2ADProvisioning` if one does not exist.
 3. Starts the job.
 
 ### If the service principal lookup fails
 
-`Configure-EntraCloudSync.ps1` searches for the SP by two display names:
-- `Microsoft Entra Provisioning to Active Directory`
-- `Active Directory Outbound Provisioning`
-
-If neither matches (display names vary across tenant configurations), find the correct name manually:
+The SP display name varies across tenant configurations. Find the correct name:
 
 ```powershell
 Connect-MgGraph -Scopes Application.Read.All
-Get-MgServicePrincipal -All | Where-Object { $_.DisplayName -like '*Provisioning*' -or $_.DisplayName -like '*Active Directory*' } |
-    Select-Object DisplayName, Id, AppId
+Get-MgServicePrincipal -All |
+    Where-Object { $_.DisplayName -like '*Provisioning*' -or $_.DisplayName -like '*Active Directory*' } |
+    Select-Object DisplayName, Id
 ```
 
-Update the filter string in `Configure-EntraCloudSync.ps1` to match your tenant's display name.
+Update the filter string in `Configure-EntraCloudSync.ps1` to match your tenant.
 
-### If the provisioning job template ID is wrong
+### If the template ID is wrong
 
-The template ID `AAD2ADProvisioning` is the standard value for Azure AD → on-prem AD inbound provisioning. If job creation fails with a template error, find the correct ID from the available templates:
+Find available templates for the registered SP:
 
 ```powershell
-$sp = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Entra Provisioning to Active Directory'"
+$sp = Get-MgServicePrincipal -Filter "displayName eq 'Active Directory Outbound Provisioning'"
 Get-MgServicePrincipalSynchronizationTemplate -ServicePrincipalId $sp.Id |
     Select-Object Id, FactoryTag
 ```
@@ -143,7 +170,7 @@ Get-MgServicePrincipalSynchronizationTemplate -ServicePrincipalId $sp.Id |
 Set the correct value in `sync-config.json`:
 ```json
 "EntraCloudSync": {
-  "ProvisioningJobTemplateId": "<correct-template-id>"
+  "ProvisioningJobTemplateId": "<correct-id>"
 }
 ```
 
@@ -154,33 +181,27 @@ Set the correct value in `sync-config.json`:
 **In the Entra portal:**
 > Entra ID → Hybrid Management → Microsoft Entra Connect → Cloud Sync → Configuration → Logs
 
-A successful sync cycle shows green status entries for provisioned users.
+A successful cycle shows green status for provisioned groups.
 
-**On a domain-joined Windows client, test a synced user:**
-```cmd
-runas /user:CORP\username cmd
+**In on-prem AD**, verify a cloud security group was written:
+```powershell
+Get-ADGroup -Filter { extensionAttribute1 -like '*' } `
+            -SearchBase "OU=SyncedGroups,DC=corp,DC=example,DC=com" |
+    Select-Object Name, SamAccountName
 ```
-Or on Linux with `krb5-user` installed:
-```bash
-kinit username@CORP.EXAMPLE.COM
-klist
-```
-A TGT should be issued by the on-prem KDC using the user's Azure AD password.
 
 **Check agent service health:**
 ```powershell
 Get-Service AADConnectProvisioningAgent | Select-Object Name, Status, StartType
 ```
 
-**Trigger a manual on-demand sync** (useful after first setup):
+**Trigger a manual on-demand sync:**
 ```powershell
-# Get the job ID first
 Connect-MgGraph
-$sp  = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Entra Provisioning to Active Directory'"
+$sp  = Get-MgServicePrincipal -Filter "displayName eq 'Active Directory Outbound Provisioning'"
 $job = Get-MgServicePrincipalSynchronizationJob -ServicePrincipalId $sp.Id | Select-Object -First 1
-
-# Trigger on-demand
-Invoke-MgServicePrincipalSynchronizationJobProvisionOnDemand -ServicePrincipalId $sp.Id -SynchronizationJobId $job.Id
+Invoke-MgServicePrincipalSynchronizationJobProvisionOnDemand `
+    -ServicePrincipalId $sp.Id -SynchronizationJobId $job.Id
 ```
 
 ---
@@ -189,25 +210,25 @@ Invoke-MgServicePrincipalSynchronizationJobProvisionOnDemand -ServicePrincipalId
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Agent shows as inactive in portal | Registration not completed | Re-run the wizard: `AADConnectProvisioningAgent.Wizard.exe` |
-| `Configure-EntraCloudSync.ps1` can't find the SP | SP display name differs in this tenant | Run the manual SP lookup above and update the filter |
-| Job creation fails with template error | Wrong `ProvisioningJobTemplateId` | Run the template lookup above and update config |
-| Users sync to AD but `kinit` fails | Kerberos keys not yet synced | Wait one full agent sync cycle (≈ 40 min); check portal logs |
-| `kinit` fails with `KDC_ERR_PREAUTH_FAILED` | Password mismatch on the on-prem AD object | The agent has not yet synced this user's keys; trigger an on-demand sync |
-| Agent service stops unexpectedly | Proxy/firewall blocking `*.msappproxy.net` | Check outbound HTTPS connectivity from the sync server |
+| Agent shows as inactive in portal | Registration not completed | Re-run the wizard |
+| Script can't find the SP | Display name differs in this tenant | Run the SP lookup above; update filter in script |
+| Job creation fails with template error | Wrong `ProvisioningJobTemplateId` | Run template lookup above; update config |
+| Cloud group not appearing in AD | Provisioning cycle not yet run | Trigger on-demand sync; check portal logs |
+| Agent service stops unexpectedly | Firewall blocking `*.msappproxy.net` | Check outbound HTTPS from the sync server |
 
 ---
 
 ## Relationship to this tool
 
-Entra Cloud Sync and `Invoke-AzureSync.ps1` run independently and do not share state. The recommended operating model:
+Entra Cloud Sync and `Invoke-AzureSync.ps1` run independently on separate schedules:
 
 ```
 Every 30–60 min (Task Scheduler):
-  .\src\Invoke-AzureSync.ps1         ← attributes, groups, certs, SPNs
+  .\src\Invoke-AzureSync.ps1    ← user attributes, account state, PKINIT certs, SPNs
 
 Continuously (Windows Service):
-  AADConnectProvisioningAgent        ← password hashes, Kerberos keys
+  AADConnectProvisioningAgent   ← cloud security groups → on-prem AD
 ```
 
-Both write to the same on-prem AD users (identified by `extensionAttribute1` = Azure OID). There is no write conflict because each pipeline owns different attributes.
+Both write to the same on-prem AD domain but to different object types (users vs. groups
+created from cloud-only groups), so there are no write conflicts.

@@ -14,7 +14,7 @@ ensure nothing touches existing user accounts until the final production cutover
 Phase 0 — Environment prep (no AD writes)
 Phase 1 — Dry-run validation (no AD writes)
 Phase 2 — Sandbox OU smoke test (isolated OU, no production users)
-Phase 3 — Entra Cloud Sync setup (credential plane only, no attribute sync yet)
+Phase 3 — Entra Cloud Sync setup (cloud security group writeback)
 Phase 4 — Pilot group rollout (subset of real users, isolated OU)
 Phase 5 — Production cutover
 Phase 6 — Kerberos / PKINIT enablement
@@ -181,9 +181,14 @@ Re-enable the user in Azure AD and confirm it flips back.
 
 ## Phase 3 — Entra Cloud Sync Setup
 
-**Goal:** Install and configure the Entra Cloud Sync agent so Azure AD is authoritative
-for password hashes and Kerberos keys. This phase does **not** start attribute sync;
-it only establishes the credential plane.
+**Goal:** Install and configure the Entra Cloud Sync agent to provision cloud security
+groups from Azure AD into on-prem AD (group writeback). This phase has no impact on
+user objects or existing AD groups mastered on-prem.
+
+> **Scope note:** Per Microsoft's documentation, Entra Cloud Sync provisions cloud
+> security groups to on-prem AD. It does not provision users, and does not sync
+> password hashes or Kerberos keys from Azure AD to on-prem AD in any direction.
+> See [docs/entra-cloud-sync-setup.md](entra-cloud-sync-setup.md) for details.
 
 Follow [`docs/entra-cloud-sync-setup.md`](entra-cloud-sync-setup.md) in full:
 
@@ -197,19 +202,14 @@ Follow [`docs/entra-cloud-sync-setup.md`](entra-cloud-sync-setup.md) in full:
 After the first provisioning cycle completes (≈ 40 min, or trigger on-demand):
 
 ```powershell
-# On a domain-joined client, test the sandbox user's Kerberos authentication
-runas /user:CORP\sync-test-user cmd
-# Enter the user's Azure AD password — should succeed
+# Confirm a cloud-only test group was written to the groups OU
+Get-ADGroup -Filter { extensionAttribute1 -like '*' } `
+            -SearchBase "OU=SyncedGroups,DC=corp,DC=example,DC=com" |
+    Select-Object Name, SamAccountName
 ```
 
-Or on Linux:
-```bash
-kinit sync-test-user@CORP.EXAMPLE.COM
-klist   # should show TGT issued by on-prem KDC
-```
-
-**Go/no-go:** Test user can obtain a Kerberos TGT using their Azure AD password.
-Agent shows Active in Entra portal. No production users modified.
+**Go/no-go:** Cloud security test group appears in on-prem AD. Agent shows Active in
+Entra portal. No user objects or existing AD groups modified.
 
 ---
 
@@ -373,7 +373,7 @@ are managed manually), and remove `-SkipCertificates` if PKINIT was validated.
 - [ ] Phase 0: Graph API returns users; no AD errors
 - [ ] Phase 1: Dry-run log matches expected user/group set; no ERROR lines
 - [ ] Phase 2: Sandbox user created with correct attributes; account state follows Azure AD
-- [ ] Phase 3: Test user obtains Kerberos TGT with Azure AD password; agent Active in portal
+- [ ] Phase 3: Cloud security test group appears in on-prem AD; agent Active in portal
 - [ ] Phase 4: Pilot users synced; existing AD users in other OUs unmodified
 - [ ] Phase 5: Full sync completes; scheduled task running; no errors
 - [ ] Phase 6: SPNs verified with `setspn`; keytab deployed; Kerberos ticket confirmed
