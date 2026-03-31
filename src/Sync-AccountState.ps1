@@ -27,19 +27,20 @@ $managedAdUsers = Get-ADUser -Filter { extensionAttribute1 -like '*-*-*-*-*' } `
                              -Server $adSrv `
                              -Properties extensionAttribute1, Enabled, DistinguishedName
 
-# Build a Set of Azure AD OIDs for fast O(1) lookup
-# TODO Store Get-MgUser result to reduce slow Graph API calls instead of using an ID map. Lookup table speed is irrelevant in comparison.
-$azureUserIds = [System.Collections.Generic.HashSet[string]]::new()
-(Get-MgUser -All -Property 'id,accountEnabled' | ForEach-Object {
-    [void]$azureUserIds.Add($_.Id)
-})
+# Fetch all Azure AD users once and build an OID → accountEnabled map.
+# This single call replaces both the ID-set lookup and the per-user Get-MgUser calls below,
+# reducing Graph API round-trips from N+1 (one per managed AD user) to 1.
+$azureUserMap = @{}
+Get-MgUser -All -Property 'id,accountEnabled' | ForEach-Object {
+    $azureUserMap[$_.Id] = $_.AccountEnabled
+}
 
 $stats = @{ Enabled = 0; Disabled = 0; MovedToDisabled = 0; Skipped = 0; Errors = 0 }
 
 foreach ($adUser in $managedAdUsers) {
     $azureOid = $adUser.extensionAttribute1
     try {
-        if (-not $azureUserIds.Contains($azureOid)) {
+        if (-not $azureUserMap.ContainsKey($azureOid)) {
             # ── User removed from Azure AD ────────────────────────────────────
             if ($cfg.Sync.DisableDeletedUsers) {
                 if ($script:DryRun) {
@@ -56,8 +57,7 @@ foreach ($adUser in $managedAdUsers) {
         }
 
         # ── User exists in Azure AD — sync enabled state ──────────────────────
-        $azureUser = Get-MgUser -UserId $azureOid -Property 'accountEnabled'
-        $shouldBeEnabled = $azureUser.AccountEnabled
+        $shouldBeEnabled = $azureUserMap[$azureOid]
 
         if ($shouldBeEnabled -and -not $adUser.Enabled) {
             if ($script:DryRun) {

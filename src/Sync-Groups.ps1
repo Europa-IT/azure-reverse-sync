@@ -20,6 +20,17 @@ $groupsOU = $cfg.LocalAD.GroupsOU
 
 Write-SyncLog "=== Sync-Groups started ==="
 
+# Pre-fetch all managed AD users (those with extensionAttribute1 set) and build a
+# DN → Azure OID map. This eliminates per-member Get-ADUser calls inside the group loop,
+# reducing AD queries from O(members × groups) to a single upfront fetch.
+$managedAdUserMap = @{}  # DistinguishedName → extensionAttribute1
+Get-ADUser -Filter { extensionAttribute1 -like '*-*-*-*-*' } `
+           -Server $adSrv `
+           -Properties extensionAttribute1 |
+    ForEach-Object {
+        $managedAdUserMap[$_.DistinguishedName] = $_.extensionAttribute1
+    }
+
 $azureGroups = Get-MgGroup -All -Filter "securityEnabled eq true" `
                             -Property 'id,displayName,description,mailNickname'
 
@@ -66,15 +77,12 @@ foreach ($azGroup in $azureGroups) {
                          Where-Object { $_.objectClass -eq 'user' }
         }
 
-        # Build map: Azure OID → AD user DN for current AD members
-        # TODO reduce loops here
+        # Build map: Azure OID → AD user DN for current AD members.
+        # Uses the pre-fetched $managedAdUserMap instead of per-member AD queries.
         $adMemberByAzureOid = @{}
         foreach ($adMember in $adMembers) {
-            $adUser = Get-ADUser -Identity $adMember.DistinguishedName `
-                                 -Properties extensionAttribute1 -Server $adSrv
-            if ($adUser.extensionAttribute1) {
-                $adMemberByAzureOid[$adUser.extensionAttribute1] = $adMember.DistinguishedName
-            }
+            $oid = $managedAdUserMap[$adMember.DistinguishedName]
+            if ($oid) { $adMemberByAzureOid[$oid] = $adMember.DistinguishedName }
         }
 
         # Add missing members
