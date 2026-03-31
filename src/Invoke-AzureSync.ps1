@@ -6,10 +6,6 @@
     Connects to Microsoft Graph and runs the configured sync operations against
     on-premises Active Directory. All sub-scripts are dot-sourced in order.
 
-    Two modes of operation:
-      Regular sync  — runs on a schedule (Task Scheduler), syncs users/groups/certs/Kerberos
-      Setup         — one-time first-run to install and configure Entra Cloud Sync
-
 .PARAMETER DryRun
     Log all planned changes without writing anything to Active Directory.
     Useful for validating configuration before first live run.
@@ -26,15 +22,6 @@
 .PARAMETER SkipKerberos
     Skip SPN registration and keytab export.
 
-.PARAMETER InstallAgent
-    Install the Entra Cloud Sync provisioning agent (requires installer at
-    config.EntraCloudSync.AgentInstallerPath). One-time setup step.
-
-.PARAMETER ConfigureCloudSync
-    Configure the Entra Cloud Sync provisioning job via Graph API, making Azure AD
-    the authoritative source for on-prem AD Kerberos keys. One-time setup step.
-    Requires the agent to already be installed and registered with the tenant.
-
 .PARAMETER ConfigPath
     Path to sync-config.json. Defaults to .\config\sync-config.json.
 
@@ -45,10 +32,6 @@
 .EXAMPLE
     # Normal scheduled sync
     .\src\Invoke-AzureSync.ps1
-
-.EXAMPLE
-    # First-time Entra Cloud Sync setup (install agent + configure job)
-    .\src\Invoke-AzureSync.ps1 -InstallAgent -ConfigureCloudSync
 
 .EXAMPLE
     # Sync only users and groups, skip certificates and Kerberos
@@ -62,8 +45,6 @@ param(
     [switch]$SkipGroups,
     [switch]$SkipCertificates,
     [switch]$SkipKerberos,
-    [switch]$InstallAgent,
-    [switch]$ConfigureCloudSync,
     [string]$ConfigPath = ''
 )
 
@@ -111,28 +92,7 @@ function Invoke-Step {
     }
 }
 
-# ── One-time Entra Cloud Sync setup ──────────────────────────────────────────
-if ($InstallAgent -or $ConfigureCloudSync) {
-    # Graph connection is needed for ConfigureCloudSync
-    . (Join-Path $scriptRoot 'src\Connect-GraphApi.ps1')
-
-    if ($InstallAgent) {
-        Invoke-Step 'Install Entra Cloud Sync Agent' 'Install-EntraCloudSync.ps1'
-        Write-SyncLog ""
-        Write-SyncLog "Complete the agent registration wizard before proceeding with -ConfigureCloudSync." -Level WARN
-        if (-not $ConfigureCloudSync) { exit 0 }
-    }
-
-    if ($ConfigureCloudSync) {
-        Invoke-Step 'Configure Entra Cloud Sync' 'Configure-EntraCloudSync.ps1'
-    }
-
-    Write-SyncLog ""
-    Write-SyncLog "Entra Cloud Sync setup complete. From now on, run without -InstallAgent / -ConfigureCloudSync for regular syncs."
-    exit 0
-}
-
-# ── Regular sync ──────────────────────────────────────────────────────────────
+# ── Sync ──────────────────────────────────────────────────────────────────────
 . (Join-Path $scriptRoot 'src\Connect-GraphApi.ps1')
 
 if (-not $SkipUsers) {

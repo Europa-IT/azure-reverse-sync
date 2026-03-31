@@ -14,14 +14,13 @@ ensure nothing touches existing user accounts until the final production cutover
 Phase 0 — Environment prep (no AD writes)
 Phase 1 — Dry-run validation (no AD writes)
 Phase 2 — Sandbox OU smoke test (isolated OU, no production users)
-Phase 3 — Entra Cloud Sync setup (cloud security group writeback)
-Phase 4 — Pilot group rollout (subset of real users, isolated OU)
-Phase 5 — Production cutover
-Phase 6 — Kerberos / PKINIT enablement
+Phase 3 — Pilot group rollout (subset of real users, isolated OU)
+Phase 4 — Production cutover
+Phase 5 — Kerberos / PKINIT enablement
 ```
 
-Phases 0–3 carry zero risk to deployed assets. Phases 4–5 introduce real users under a
-controlled scope. Phase 6 is additive-only (SPNs and keytabs do not modify existing
+Phases 0–2 carry zero risk to deployed assets. Phases 3–4 introduce real users under a
+controlled scope. Phase 5 is additive-only (SPNs and keytabs do not modify existing
 objects destructively).
 
 ---
@@ -50,8 +49,6 @@ objects destructively).
    | `Group.Read.All` | Group sync |
    | `GroupMember.Read.All` | Group sync |
    | `UserAuthenticationMethod.Read.All` | PKINIT cert sync |
-   | `Synchronization.ReadWrite.All` | Entra Cloud Sync job config |
-   | `Application.Read.All` | Entra Cloud Sync SP lookup |
 
 ### 0.2  Create isolated OUs in on-prem AD
 
@@ -179,45 +176,11 @@ Re-enable the user in Azure AD and confirm it flips back.
 
 ---
 
-## Phase 3 — Entra Cloud Sync Setup
-
-**Goal:** Install and configure the Entra Cloud Sync agent to provision cloud security
-groups from Azure AD into on-prem AD (group writeback). This phase has no impact on
-user objects or existing AD groups mastered on-prem.
-
-> **Scope note:** Per Microsoft's documentation, Entra Cloud Sync provisions cloud
-> security groups to on-prem AD. It does not provision users, and does not sync
-> password hashes or Kerberos keys from Azure AD to on-prem AD in any direction.
-> See [docs/entra-cloud-sync-setup.md](entra-cloud-sync-setup.md) for details.
-
-Follow [`docs/entra-cloud-sync-setup.md`](entra-cloud-sync-setup.md) in full:
-
-1. Download agent installer → `config.EntraCloudSync.AgentInstallerPath`
-2. `.\src\Invoke-AzureSync.ps1 -InstallAgent`
-3. Complete the registration wizard (interactive, Hybrid Identity Admin)
-4. `.\src\Invoke-AzureSync.ps1 -ConfigureCloudSync`
-
-### Verification (no production impact)
-
-After the first provisioning cycle completes (≈ 40 min, or trigger on-demand):
-
-```powershell
-# Confirm a cloud-only test group was written to the groups OU
-Get-ADGroup -Filter { extensionAttribute1 -like '*' } `
-            -SearchBase "OU=SyncedGroups,DC=corp,DC=example,DC=com" |
-    Select-Object Name, SamAccountName
-```
-
-**Go/no-go:** Cloud security test group appears in on-prem AD. Agent shows Active in
-Entra portal. No user objects or existing AD groups modified.
-
----
-
-## Phase 4 — Pilot Group Rollout
+## Phase 3 — Pilot Group Rollout
 
 **Goal:** Sync a controlled subset of real users to the production OUs.
 
-### 4.1  Update sync-config.json to target production OUs
+### 3.1  Update sync-config.json to target production OUs
 
 ```json
 "LocalAD": {
@@ -227,14 +190,13 @@ Entra portal. No user objects or existing AD groups modified.
 }
 ```
 
-### 4.2  Scope Azure AD to a pilot group (optional but recommended)
+### 3.2  Scope Azure AD to a pilot group (optional but recommended)
 
 If only a subset of users should sync initially, add a group filter in
-`Sync-Users.ps1` (or use Entra Cloud Sync's scoping filter for the provisioning job).
-This is not yet configurable via `sync-config.json` and requires a small code change
-or manual Graph filter.
+`Sync-Users.ps1`. This is not yet configurable via `sync-config.json` and requires a
+small code change or manual Graph filter.
 
-### 4.3  Run dry-run against production OUs
+### 3.3  Run dry-run against production OUs
 
 ```powershell
 .\src\Invoke-AzureSync.ps1 -DryRun
@@ -242,7 +204,7 @@ or manual Graph filter.
 
 Confirm log shows pilot users only, no unexpected accounts.
 
-### 4.4  Live pilot sync
+### 3.4  Live pilot sync
 
 ```powershell
 .\src\Invoke-AzureSync.ps1 -SkipKerberos
@@ -250,7 +212,6 @@ Confirm log shows pilot users only, no unexpected accounts.
 
 **Verify:**
 - Pilot users appear in `OU=AzureSyncedUsers` with correct attributes
-- Pilot users can authenticate with Kerberos using Azure AD credentials (via Entra Cloud Sync)
 - Existing users in **other** OUs are untouched (confirm with `Get-ADUser` against those OUs)
 - Security groups created in `OU=AzureSyncedGroups` with correct memberships
 
@@ -262,15 +223,15 @@ users it created (identified by `extensionAttribute1`).
 
 ---
 
-## Phase 5 — Production Cutover
+## Phase 4 — Production Cutover
 
 **Goal:** Enable full sync for all Azure AD users.
 
-### 5.1  Remove any pilot group scope filter
+### 4.1  Remove any pilot group scope filter
 
 Ensure `Sync-Users.ps1` fetches all users (no group filter).
 
-### 5.2  Final dry-run
+### 4.2  Final dry-run
 
 ```powershell
 .\src\Invoke-AzureSync.ps1 -DryRun 2>&1 | Tee-Object logs\pre-cutover-dryrun.log
@@ -279,7 +240,7 @@ Ensure `Sync-Users.ps1` fetches all users (no group filter).
 Review `logs\pre-cutover-dryrun.log`. Confirm the count of users to be created matches
 expectations. Archive this log.
 
-### 5.3  Live cutover sync
+### 4.3  Live cutover sync
 
 ```powershell
 .\src\Invoke-AzureSync.ps1 -SkipKerberos
@@ -290,7 +251,7 @@ Monitor `logs\sync.log` in real time:
 Get-Content logs\sync.log -Wait
 ```
 
-### 5.4  Schedule recurring sync
+### 4.4  Schedule recurring sync
 
 ```powershell
 $action   = New-ScheduledTaskAction -Execute 'powershell.exe' `
@@ -305,7 +266,7 @@ Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
 
 ---
 
-## Phase 6 — Kerberos SPN and PKINIT Enablement
+## Phase 5 — Kerberos SPN and PKINIT Enablement
 
 **Goal:** Register Kerberos service accounts and optionally enable PKINIT for
 certificate-based end-user Kerberos.
@@ -314,7 +275,7 @@ These operations are additive: registering SPNs does not remove any existing SPN
 other accounts, and writing `userCertificate` to a user object does not affect any
 existing attributes or Kerberos TGT flows.
 
-### 6.1  Create service accounts in AD
+### 5.1  Create service accounts in AD
 
 For each entry in `config.Kerberos.ServiceAccounts`:
 ```powershell
@@ -323,7 +284,7 @@ New-ADUser -Name svc-fileserver -SamAccountName svc-fileserver `
            -Enabled $true -PasswordNeverExpires $true
 ```
 
-### 6.2  Run SPN + keytab generation
+### 5.2  Run SPN + keytab generation
 
 ```powershell
 .\src\Invoke-AzureSync.ps1 -SkipUsers -SkipGroups -SkipCertificates
@@ -338,7 +299,7 @@ setspn -L svc-fileserver
 Deploy keytab to the file server (copy from `config.Kerberos.KeytabOutputPath`).
 Test with `klist` on a client after accessing the share.
 
-### 6.3  Enable PKINIT certificate sync (optional)
+### 5.3  Enable PKINIT certificate sync (optional)
 
 Ensure `config.PKINIT.Enabled = true` and `CACertificatePath` points to the issuing
 CA certificate. Then run:
@@ -349,7 +310,7 @@ CA certificate. Then run:
 
 Verify with `kinit` using a certificate credential on a test user.
 
-### 6.4  Enable full scheduled sync including certificates
+### 5.4  Enable full scheduled sync including certificates
 
 Update the scheduled task to remove the `-SkipKerberos` flag (or leave it if SPNs
 are managed manually), and remove `-SkipCertificates` if PKINIT was validated.
@@ -360,11 +321,10 @@ are managed manually), and remove `-SkipCertificates` if PKINIT was validated.
 
 | Scenario | Action |
 |---|---|
-| Stop all syncing immediately | Disable the `AzureSync` scheduled task and stop the `AADConnectProvisioningAgent` service |
+| Stop all syncing immediately | Disable the `AzureSync` scheduled task |
 | Undo a bad attribute change | `Set-ADUser -Identity <user> -<Attr> <previous-value>` — only this tool's managed attributes are affected |
 | Remove all synced users | `Get-ADUser -Filter { extensionAttribute1 -like '*' } -SearchBase <TargetOU> \| Disable-ADAccount` — existing users in other OUs are untouched |
 | Remove a stale SPN | `Set-ADUser svc-fileserver -ServicePrincipalNames @{Remove="cifs/fileserver01.corp.example.com"}` |
-| Remove Entra Cloud Sync agent | Uninstall via Programs and Features; delete the provisioning job from the Entra portal |
 
 ---
 
@@ -373,7 +333,6 @@ are managed manually), and remove `-SkipCertificates` if PKINIT was validated.
 - [ ] Phase 0: Graph API returns users; no AD errors
 - [ ] Phase 1: Dry-run log matches expected user/group set; no ERROR lines
 - [ ] Phase 2: Sandbox user created with correct attributes; account state follows Azure AD
-- [ ] Phase 3: Cloud security test group appears in on-prem AD; agent Active in portal
-- [ ] Phase 4: Pilot users synced; existing AD users in other OUs unmodified
-- [ ] Phase 5: Full sync completes; scheduled task running; no errors
-- [ ] Phase 6: SPNs verified with `setspn`; keytab deployed; Kerberos ticket confirmed
+- [ ] Phase 3: Pilot users synced; existing AD users in other OUs unmodified
+- [ ] Phase 4: Full sync completes; scheduled task running; no errors
+- [ ] Phase 5: SPNs verified with `setspn`; keytab deployed; Kerberos ticket confirmed

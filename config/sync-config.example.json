@@ -49,12 +49,6 @@
     "CertificateSource": "EntraCBA"
   },
 
-  "EntraCloudSync": {
-    "AgentInstallerPath": "C:\\temp\\AADConnectProvisioningAgentSetup.exe",
-    "ProvisioningJobTemplateId": "AAD2ADProvisioning",
-    "SyncScope": "AllUsers"
-  },
-
   "Sync": {
     "DryRun": false,
     "DisableDeletedUsers": true,
