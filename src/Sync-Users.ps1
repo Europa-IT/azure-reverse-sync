@@ -62,7 +62,6 @@ foreach ($gUser in $graphUsers) {
             if ($script:DryRun) {
                 Write-SyncLog "[DRYRUN] Would create user: $($gUser.UserPrincipalName) (SAM: $samAccount)"
             } else {
-                # Placeholder password — Entra Cloud Sync will overwrite the credential plane
                 $tempPw = New-SecureRandomPassword
                 New-ADUser @newUserParams -AccountPassword $tempPw
                 Write-SyncLog "Created user: $($gUser.UserPrincipalName) (SAM: $samAccount)"

@@ -64,8 +64,6 @@ function Get-SyncConfig {
     }
 
     $raw = Get-Content $resolved.Path -Raw -Encoding UTF8
-    # Strip _comment keys before parsing (JSON doesn't support comments natively)
-    $raw = $raw -replace '"_comment[^"]*"\s*:\s*"[^"]*",?\s*', ''
     $config = $raw | ConvertFrom-Json
 
     # Required field validation

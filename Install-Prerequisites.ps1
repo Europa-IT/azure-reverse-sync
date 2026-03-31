@@ -114,5 +114,4 @@ Write-Host "`nPrerequisite check complete.`n" -ForegroundColor White
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Copy config\sync-config.example.json to config\sync-config.json and fill in your values."
 Write-Host "  2. Run: .\src\Invoke-AzureSync.ps1 -DryRun"
-Write-Host "  3. For first-time Entra Cloud Sync setup: .\src\Invoke-AzureSync.ps1 -SetupEntraCloudSync"
 Write-Host ""

@@ -14,8 +14,6 @@
       - Group.Read.All
       - GroupMember.Read.All
       - UserAuthenticationMethod.Read.All   (for PKINIT cert fetch)
-      - Synchronization.ReadWrite.All        (for Entra Cloud Sync job management)
-      - Application.Read.All                 (for Entra Cloud Sync SP lookup)
 #>
 
 Set-StrictMode -Version Latest
