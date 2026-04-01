@@ -114,4 +114,5 @@ if ($SkipKerberos)     { $syncArgs += '-SkipKerberos' }
 if ($ConfigPath)       { $syncArgs += '-ConfigPath'; $syncArgs += $ConfigPath }
 
 & $syncScript @syncArgs
+Read-Host "Completed with exit code $LASTEXITCODE, press Enter to exit"
 exit $LASTEXITCODE
