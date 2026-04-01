@@ -101,9 +101,8 @@ foreach ($azGroup in $azureGroups) {
         }
 
         # Remove extra members (in AD but not in Azure)
-        $azureMemberSet = [System.Collections.Generic.HashSet[string]]::new($azureMembers)
         foreach ($oid in $adMemberByAzureOid.Keys) {
-            if (-not $azureMemberSet.Contains($oid)) {
+            if (-not $azureMembers.Contains($oid)) {
                 Remove-ADGroupMember -Identity $adGroup.DistinguishedName `
                                      -Members $adMemberByAzureOid[$oid] -Server $adSrv -Confirm:$false
                 Write-SyncLog "Removed Azure OID $oid from group $($azGroup.DisplayName)"
