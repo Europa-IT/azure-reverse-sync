@@ -161,28 +161,23 @@ Write-TaskLog "Interval     : every $IntervalMinutes minute(s)"
 Write-TaskLog "Run as       : $RunAsUser"
 
 # ── Build task components ─────────────────────────────────────────────────────
-try {
-    $action = New-ScheduledTaskAction `
-        -Execute 'powershell.exe' `
-        -Argument $actionArguments `
-        -WorkingDirectory $RepoPath
+$action = New-ScheduledTaskAction `
+    -Execute 'powershell.exe' `
+    -Argument $actionArguments `
+    -WorkingDirectory $RepoPath
 
-    # Start ~60 seconds from now, then repeat every IntervalMinutes
-    $startTime = (Get-Date).AddSeconds(60)
-    $trigger = New-ScheduledTaskTrigger `
-        -Once `
-        -At $startTime `
-        -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
+# Start ~60 seconds from now, then repeat every IntervalMinutes
+$startTime = (Get-Date).AddSeconds(60)
+$trigger = New-ScheduledTaskTrigger `
+    -Once `
+    -At $startTime `
+    -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
 
-    $settings = New-ScheduledTaskSettingsSet `
-        -RunOnlyIfNetworkAvailable `
-        -StartWhenAvailable `
-        -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
-        -MultipleInstances IgnoreNew
-} catch {
-    Write-TaskLog "Failed to build task components: $_" -Level ERROR
-    exit 1
-}
+$settings = New-ScheduledTaskSettingsSet `
+    -RunOnlyIfNetworkAvailable `
+    -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
+    -MultipleInstances IgnoreNew
 
 $taskParams = @{
     TaskName  = $TaskName
