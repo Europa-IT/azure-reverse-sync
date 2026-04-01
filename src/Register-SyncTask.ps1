@@ -86,10 +86,32 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# ── Local logger ─────────────────────────────────────────────────────────────
+function Write-TaskLog {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $entry     = "[$timestamp] [$Level] $Message"
+    switch ($Level) {
+        'WARN'  { Write-Host $entry -ForegroundColor Yellow }
+        'ERROR' { Write-Host $entry -ForegroundColor Red }
+        default { Write-Host $entry }
+    }
+
+    # Append to the sync log file if the module + config are already loaded
+    if ((Get-Module AzureSync -ErrorAction SilentlyContinue) -and
+        $script:Config -and $script:Config.Sync.LogPath) {
+        Add-Content -Path $script:Config.Sync.LogPath -Value $entry -Encoding UTF8
+    }
+}
+
 # ── Resolve the sync script path ─────────────────────────────────────────────
 $syncScript = Join-Path $RepoPath 'src\Invoke-AzureSync.ps1'
 if (-not (Test-Path $syncScript)) {
-    throw "Invoke-AzureSync.ps1 not found at '$syncScript'. Ensure -RepoPath points to the repository root."
+    Write-TaskLog "Invoke-AzureSync.ps1 not found at '$syncScript'. Ensure -RepoPath points to the repository root." -Level ERROR
+    exit 1
 }
 $syncScriptFull = (Resolve-Path $syncScript).Path
 
@@ -97,12 +119,17 @@ $syncScriptFull = (Resolve-Path $syncScript).Path
 if ($Unregister) {
     $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if (-not $existing) {
-        Write-Host "Scheduled task '$TaskName' does not exist — nothing to remove." -ForegroundColor Yellow
+        Write-TaskLog "Scheduled task '$TaskName' does not exist — nothing to remove." -Level WARN
         exit 0
     }
     if ($PSCmdlet.ShouldProcess($TaskName, 'Unregister scheduled task')) {
-        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-        Write-Host "Scheduled task '$TaskName' removed." -ForegroundColor Green
+        try {
+            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+            Write-TaskLog "Scheduled task '$TaskName' removed successfully."
+        } catch {
+            Write-TaskLog "Failed to remove scheduled task '$TaskName': $_" -Level ERROR
+            exit 1
+        }
     }
     exit 0
 }
@@ -110,8 +137,8 @@ if ($Unregister) {
 # ── Guard against overwriting an existing task ────────────────────────────────
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing -and -not $Force) {
-    Write-Host "Scheduled task '$TaskName' already exists. Use -Force to overwrite." -ForegroundColor Yellow
-    Write-Host "Current action: $($existing.Actions[0].Execute) $($existing.Actions[0].Arguments)"
+    Write-TaskLog "Scheduled task '$TaskName' already exists. Use -Force to overwrite." -Level WARN
+    Write-TaskLog "Current action: $($existing.Actions[0].Execute) $($existing.Actions[0].Arguments)"
     exit 1
 }
 
@@ -127,30 +154,35 @@ if ($ConfigPath)      { $syncArgs += '-ConfigPath'; $syncArgs += "`"$ConfigPath`
 
 $actionArguments = $syncArgs -join ' '
 
-Write-Host "Task name    : $TaskName" -ForegroundColor Cyan
-Write-Host "Script       : $syncScriptFull" -ForegroundColor Cyan
-Write-Host "Arguments    : $actionArguments" -ForegroundColor Cyan
-Write-Host "Interval     : every $IntervalMinutes minute(s)" -ForegroundColor Cyan
-Write-Host "Run as       : $RunAsUser" -ForegroundColor Cyan
+Write-TaskLog "Task name    : $TaskName"
+Write-TaskLog "Script       : $syncScriptFull"
+Write-TaskLog "Arguments    : $actionArguments"
+Write-TaskLog "Interval     : every $IntervalMinutes minute(s)"
+Write-TaskLog "Run as       : $RunAsUser"
 
 # ── Build task components ─────────────────────────────────────────────────────
-$action = New-ScheduledTaskAction `
-    -Execute 'powershell.exe' `
-    -Argument $actionArguments `
-    -WorkingDirectory $RepoPath
+try {
+    $action = New-ScheduledTaskAction `
+        -Execute 'powershell.exe' `
+        -Argument $actionArguments `
+        -WorkingDirectory $RepoPath
 
-# Start ~60 seconds from now, then repeat every IntervalMinutes
-$startTime = (Get-Date).AddSeconds(60)
-$trigger = New-ScheduledTaskTrigger `
-    -Once `
-    -At $startTime `
-    -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
+    # Start ~60 seconds from now, then repeat every IntervalMinutes
+    $startTime = (Get-Date).AddSeconds(60)
+    $trigger = New-ScheduledTaskTrigger `
+        -Once `
+        -At $startTime `
+        -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
 
-$settings = New-ScheduledTaskSettingsSet `
-    -RunOnlyIfNetworkAvailable `
-    -StartWhenAvailable `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
-    -MultipleInstances IgnoreNew
+    $settings = New-ScheduledTaskSettingsSet `
+        -RunOnlyIfNetworkAvailable `
+        -StartWhenAvailable `
+        -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
+        -MultipleInstances IgnoreNew
+} catch {
+    Write-TaskLog "Failed to build task components: $_" -Level ERROR
+    exit 1
+}
 
 $taskParams = @{
     TaskName  = $TaskName
@@ -175,16 +207,17 @@ if ($RunAsUser -eq 'SYSTEM') {
 
 # ── Register ──────────────────────────────────────────────────────────────────
 if ($PSCmdlet.ShouldProcess($TaskName, 'Register scheduled task')) {
+    try {
+        $registered = Register-ScheduledTask @taskParams
+        $nextRun    = ($registered | Get-ScheduledTaskInfo).NextRunTime
 
-    $registered = Register-ScheduledTask @taskParams
-
-    # Verify
-    $nextRun    = ($registered | Get-ScheduledTaskInfo).NextRunTime
-
-    Write-Host "`nScheduled task '$TaskName' registered successfully." -ForegroundColor Green
-    Write-Host "  State        : $($registered.State)"
-    Write-Host "  Next run     : $nextRun"
-    Write-Host "  Action       : $($registered.Actions[0].Execute) $($registered.Actions[0].Arguments)"
-    Write-Host "`nTo remove this task later, run:"
-    Write-Host "  .\src\Register-SyncTask.ps1 -Unregister" -ForegroundColor DarkGray
+        Write-TaskLog "Scheduled task '$TaskName' registered successfully."
+        Write-TaskLog "  State    : $($registered.State)"
+        Write-TaskLog "  Next run : $nextRun"
+        Write-TaskLog "  Action   : $($registered.Actions[0].Execute) $($registered.Actions[0].Arguments)"
+        Write-TaskLog "To remove this task later, run: .\src\Register-SyncTask.ps1 -Unregister"
+    } catch {
+        Write-TaskLog "Failed to register scheduled task '$TaskName': $_" -Level ERROR
+        exit 1
+    }
 }

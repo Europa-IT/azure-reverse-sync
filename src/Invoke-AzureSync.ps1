@@ -25,6 +25,11 @@
 .PARAMETER ConfigPath
     Path to sync-config.json. Defaults to .\config\sync-config.json.
 
+.PARAMETER RegisterTask
+    Register (or re-register) the Windows Scheduled Task using settings from
+    config.ScheduledTask, then exit without running a sync. Calls
+    Register-SyncTask.ps1 with -Force so repeated calls are safe.
+
 .EXAMPLE
     # Dry run to preview all changes
     .\src\Invoke-AzureSync.ps1 -DryRun
@@ -36,6 +41,10 @@
 .EXAMPLE
     # Sync only users and groups, skip certificates and Kerberos
     .\src\Invoke-AzureSync.ps1 -SkipCertificates -SkipKerberos
+
+.EXAMPLE
+    # Register the scheduled task using settings from sync-config.json
+    .\src\Invoke-AzureSync.ps1 -RegisterTask
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
@@ -45,7 +54,8 @@ param(
     [switch]$SkipGroups,
     [switch]$SkipCertificates,
     [switch]$SkipKerberos,
-    [string]$ConfigPath = ''
+    [string]$ConfigPath = '',
+    [switch]$RegisterTask
 )
 
 Set-StrictMode -Version Latest
@@ -70,6 +80,29 @@ $script:DryRun = $DryRun.IsPresent
 if ($script:Config.Sync.DryRun -eq $true -and -not $DryRun) {
     Write-SyncLog "DryRun enabled via config file." -Level WARN
     $script:DryRun = $true
+}
+
+# ── Scheduled task registration (early exit) ──────────────────────────────────
+if ($RegisterTask) {
+    $taskCfg        = $script:Config.ScheduledTask
+    $registerScript = Join-Path $scriptRoot 'src\Register-SyncTask.ps1'
+
+    if (-not (Test-Path $registerScript)) {
+        Write-SyncLog "Register-SyncTask.ps1 not found at '$registerScript'." -Level ERROR
+        exit 1
+    }
+
+    $taskArgs = @('-Force')  # always re-register when called explicitly
+    if ($taskCfg.TaskName)         { $taskArgs += '-TaskName';         $taskArgs += $taskCfg.TaskName }
+    if ($taskCfg.IntervalMinutes)  { $taskArgs += '-IntervalMinutes';  $taskArgs += [string]$taskCfg.IntervalMinutes }
+    if ($taskCfg.RunAsUser)        { $taskArgs += '-RunAsUser';        $taskArgs += $taskCfg.RunAsUser }
+    if ($taskCfg.SkipKerberos)     { $taskArgs += '-SkipKerberos' }
+    if ($taskCfg.SkipCertificates) { $taskArgs += '-SkipCertificates' }
+    if ($ConfigPath)               { $taskArgs += '-ConfigPath'; $taskArgs += $ConfigPath }
+
+    Write-SyncLog "Registering scheduled task with config from ScheduledTask section..."
+    & $registerScript @taskArgs
+    exit $LASTEXITCODE
 }
 
 $mode = if ($script:DryRun) { 'DRY RUN' } else { 'LIVE' }
