@@ -41,9 +41,23 @@ if (-not (Test-Path $outPath)) {
 
 $stats = @{ SPNsRegistered = 0; KeytabsExported = 0; Skipped = 0; Errors = 0 }
 
-# TODO Modify logic to automatically register users synced from Azure AD as service accounts
 foreach ($sa in $cfg.Kerberos.ServiceAccounts) {
-    $sam         = $sa.SamAccountName
+    # Support referencing service accounts by Azure AD Object ID (extensionAttribute1)
+    # instead of SamAccountName, for accounts that were synced from Azure AD.
+    if ($sa.AzureObjectId -and -not $sa.SamAccountName) {
+        $resolvedUser = Get-ADUser -Filter { extensionAttribute1 -eq $sa.AzureObjectId } `
+                                   -Server $adSrv -ErrorAction SilentlyContinue
+        if (-not $resolvedUser) {
+            Write-SyncLog "Cannot resolve AzureObjectId '$($sa.AzureObjectId)' to an AD user — skipping." -Level WARN
+            $stats.Skipped++
+            continue
+        }
+        $sam = $resolvedUser.SamAccountName
+        Write-SyncLog "Resolved AzureObjectId $($sa.AzureObjectId) → SAM: $sam"
+    } else {
+        $sam = $sa.SamAccountName
+    }
+
     $fqdn        = $sa.FQDN
     $svcClass    = $sa.ServiceClass
     $spn         = "$svcClass/$fqdn"

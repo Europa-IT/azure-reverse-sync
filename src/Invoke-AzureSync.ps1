@@ -61,15 +61,15 @@ if (-not (Test-Path $modulePath)) {
 Import-Module $modulePath -Force
 
 # ── Load configuration ────────────────────────────────────────────────────────
-# TODO review dryrun parameterization, this looks a bit suspect
 $cfgArgs = @{}
 if ($ConfigPath) { $cfgArgs['ConfigPath'] = $ConfigPath }
 $script:Config = Get-SyncConfig @cfgArgs
-$script:DryRun = $DryRun.IsPresent
 
-if ($script:Config.Sync.DryRun -eq $true -and -not $DryRun) {
-    Write-SyncLog "DryRun enabled via config file." -Level WARN
-    $script:DryRun = $true
+# Resolve DryRun: -DryRun switch takes precedence; config Sync.DryRun is a fallback.
+# Set $script:DryRun before any Write-SyncLog calls so the [DRYRUN] prefix is accurate.
+$script:DryRun = $DryRun.IsPresent -or ($script:Config.Sync.DryRun -eq $true)
+if ($script:Config.Sync.DryRun -eq $true -and -not $DryRun.IsPresent) {
+    Write-SyncLog "DryRun enabled via config file (Sync.DryRun = true)." -Level WARN
 }
 
 $mode = if ($script:DryRun) { 'DRY RUN' } else { 'LIVE' }
