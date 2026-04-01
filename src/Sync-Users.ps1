@@ -20,13 +20,43 @@ $targetOU = $cfg.LocalAD.TargetOU
 
 Write-SyncLog "=== Sync-Users started ==="
 
-# TODO Add an optional filter to only sync licensed Azure users. Keep the guest account exclusion.
-# TODO Possible design idea: filter by group in Azure.
-$graphUsers = Get-MgUser -All -Property @(
-    'id','displayName','givenName','surname','userPrincipalName',
-    'mail','department','jobTitle','mobilePhone','officeLocation',
-    'companyName','accountEnabled'
-) | Where-Object { $_.UserPrincipalName -notlike '*#EXT#*' }  # exclude guest accounts
+$filterGroupId     = $cfg.Sync.FilterGroupId
+$licensedUsersOnly = $cfg.Sync.LicensedUsersOnly -eq $true
+
+if ($filterGroupId) {
+    # ── Scope to members of a specific Azure AD group ─────────────────────────
+    Write-SyncLog "Fetching users from filter group: $filterGroupId"
+    $groupMemberIds = Get-MgGroupMember -GroupId $filterGroupId -All | Select-Object -ExpandProperty Id
+    $graphUsers = foreach ($memberId in $groupMemberIds) {
+        Get-MgUser -UserId $memberId -Property @(
+            'id','displayName','givenName','surname','userPrincipalName',
+            'mail','department','jobTitle','mobilePhone','officeLocation',
+            'companyName','accountEnabled','assignedLicenses'
+        ) -ErrorAction SilentlyContinue
+    }
+} elseif ($licensedUsersOnly) {
+    # ── Licensed users: Graph filter requires ConsistencyLevel header ─────────
+    Write-SyncLog "Fetching licensed users only (LicensedUsersOnly = true)"
+    $graphUsers = Get-MgUser -All `
+        -Filter 'assignedLicenses/$count ne 0' `
+        -ConsistencyLevel eventual `
+        -CountVariable userCount `
+        -Property @(
+            'id','displayName','givenName','surname','userPrincipalName',
+            'mail','department','jobTitle','mobilePhone','officeLocation',
+            'companyName','accountEnabled','assignedLicenses'
+        )
+} else {
+    $graphUsers = Get-MgUser -All -Property @(
+        'id','displayName','givenName','surname','userPrincipalName',
+        'mail','department','jobTitle','mobilePhone','officeLocation',
+        'companyName','accountEnabled'
+    )
+}
+
+# Always exclude guest accounts regardless of filter mode
+$graphUsers = @($graphUsers) | Where-Object { $_.UserPrincipalName -notlike '*#EXT#*' }
+Write-SyncLog "Users to sync: $(@($graphUsers).Count)"
 
 $stats = @{ Created = 0; Updated = 0; Skipped = 0; Errors = 0 }
 

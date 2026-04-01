@@ -53,6 +53,8 @@
     "DryRun": false,
     "DisableDeletedUsers": true,
     "LogPath": ".\\logs\\sync.log"
+    "LicensedUsersOnly": false,
+    "FilterGroupId": "",
   },
 
   "ScheduledTask": {
