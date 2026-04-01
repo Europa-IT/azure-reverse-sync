@@ -52,8 +52,16 @@
   "Sync": {
     "DryRun": false,
     "DisableDeletedUsers": true,
-    "LogPath": ".\\logs\\sync.log",
+    "LogPath": ".\\logs\\sync.log"
     "LicensedUsersOnly": false,
-    "FilterGroupId": ""
+    "FilterGroupId": "",
+  },
+
+  "ScheduledTask": {
+    "TaskName": "AzureSync",
+    "IntervalMinutes": 30,
+    "RunAsUser": "SYSTEM",
+    "SkipKerberos": false,
+    "SkipCertificates": false
   }
 }

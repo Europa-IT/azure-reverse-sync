@@ -73,13 +73,27 @@ Logs all planned changes without writing to Active Directory.
 
 ### 4. Schedule recurring sync
 
+Configure the scheduled task in `sync-config.json` under `ScheduledTask`, then register it:
+
 ```powershell
-$action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
-               -Argument '-NonInteractive -File "C:\azure-reverse-sync\src\Invoke-AzureSync.ps1"'
-$trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 30) -Once -At (Get-Date)
-$settings = New-ScheduledTaskSettingsSet -RunOnlyIfNetworkAvailable
-Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
-    -Settings $settings -RunLevel Highest -User 'CORP\svc-azuresync'
+# Register using settings from sync-config.json (TaskName, IntervalMinutes, RunAsUser, etc.)
+.\src\Invoke-AzureSync.ps1 -RegisterTask
+```
+
+Or call the registration script directly for more control:
+
+```powershell
+# Default: every 30 minutes, run as SYSTEM
+.\src\Register-SyncTask.ps1
+
+# Every 15 minutes under a dedicated service account, skipping Kerberos
+.\src\Register-SyncTask.ps1 -IntervalMinutes 15 -RunAsUser 'CORP\svc-azuresync' -SkipKerberos
+
+# Preview without registering
+.\src\Register-SyncTask.ps1 -WhatIf
+
+# Remove the task
+.\src\Register-SyncTask.ps1 -Unregister
 ```
 
 ---
@@ -87,6 +101,9 @@ Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
 ## Usage
 
 ```powershell
+# First-time setup (elevates, installs prereqs, runs sync)
+.\Start-AzureSync.ps1 -DryRun
+
 # Full sync (default)
 .\src\Invoke-AzureSync.ps1
 
@@ -98,6 +115,9 @@ Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
 
 # Kerberos SPNs + keytabs only
 .\src\Invoke-AzureSync.ps1 -SkipUsers -SkipGroups -SkipCertificates
+
+# Register the scheduled task from sync-config.json
+.\src\Invoke-AzureSync.ps1 -RegisterTask
 ```
 
 ---
@@ -115,7 +135,8 @@ azure-reverse-sync/
 │   ├── Sync-AccountState.ps1          # Enable/disable accounts
 │   ├── Sync-Groups.ps1                # Security group + membership sync
 │   ├── Sync-UserCertificates.ps1      # PKINIT: write Azure CBA certs to AD
-│   └── Set-KerberosSpn.ps1            # Register SPNs, export keytabs
+│   ├── Set-KerberosSpn.ps1            # Register SPNs, export keytabs
+│   └── Register-SyncTask.ps1          # Create/remove the recurring scheduled task
 ├── modules/
 │   └── AzureSync.psm1                 # Shared helpers
 ├── tests/
@@ -125,6 +146,7 @@ azure-reverse-sync/
 │   ├── Set-KerberosSpn.Tests.ps1
 │   └── Sync-UserCertificates.Tests.ps1
 ├── logs/                              # Gitignored; sync logs written here
+├── Start-AzureSync.ps1                # Entry point: elevates, installs prereqs, runs sync
 ├── Install-Prerequisites.ps1          # Module installation and validation
 └── .gitignore
 ```
