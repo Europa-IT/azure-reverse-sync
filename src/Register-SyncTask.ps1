@@ -175,10 +175,10 @@ if ($RunAsUser -eq 'SYSTEM') {
 
 # ── Register ──────────────────────────────────────────────────────────────────
 if ($PSCmdlet.ShouldProcess($TaskName, 'Register scheduled task')) {
-    $task = Register-ScheduledTask @taskParams
+
+    $registered = Register-ScheduledTask @taskParams
 
     # Verify
-    $registered = Get-ScheduledTask -TaskName $TaskName
     $nextRun    = ($registered | Get-ScheduledTaskInfo).NextRunTime
 
     Write-Host "`nScheduled task '$TaskName' registered successfully." -ForegroundColor Green
