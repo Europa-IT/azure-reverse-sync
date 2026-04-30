@@ -89,27 +89,6 @@ if ($pester -and $pester.Version.Major -ge 5) {
     Write-OK "Pester v5 installed"
 }
 
-# ── 5. certutil.exe ──────────────────────────────────────────────────────────
-Write-Step "Checking certutil.exe (required for PKINIT NTAuth store)..."
-$certutil = Get-Command certutil.exe -ErrorAction SilentlyContinue
-if ($certutil) {
-    Write-OK "certutil.exe found at $($certutil.Source)"
-} else {
-    Write-Fail "certutil.exe not found. This is required for PKINIT certificate trust setup."
-    Write-Fail "certutil.exe is included with Windows Server and RSAT certificate tools."
-}
-
-# ── 6. ktpass.exe ────────────────────────────────────────────────────────────
-Write-Step "Checking ktpass.exe (required for Kerberos keytab generation)..."
-$ktpass = Get-Command ktpass.exe -ErrorAction SilentlyContinue
-if ($ktpass) {
-    Write-OK "ktpass.exe found at $($ktpass.Source)"
-} else {
-    Write-Fail "ktpass.exe not found on PATH."
-    Write-Fail "ktpass.exe is included with Windows Server Active Directory Domain Services role tools."
-    Write-Fail "Install via: Install-WindowsFeature RSAT-AD-Tools"
-}
-
 Write-Host "`nPrerequisite check complete.`n" -ForegroundColor White
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Copy config\sync-config.example.json to config\sync-config.json and fill in your values."

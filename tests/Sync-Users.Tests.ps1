@@ -17,8 +17,6 @@ BeforeAll {
             MobilePhone       = 'MobilePhone'
         }
         Sync         = [PSCustomObject]@{ DryRun = $false; LogPath = '' }
-        Kerberos     = [PSCustomObject]@{ Realm = 'TEST.LOCAL'; KeytabOutputPath = ''; ServiceAccounts = @() }
-        PKINIT       = [PSCustomObject]@{ Enabled = $false; CACertificatePath = '' }
         AzureAD      = [PSCustomObject]@{ TenantId = 'test-tenant'; ClientId = 'test-client'; CertificateThumbprint = '' }
     }
     $script:DryRun = $false

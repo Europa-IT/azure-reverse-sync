@@ -72,8 +72,7 @@ function Get-SyncConfig {
         @{ Path = 'AzureAD.ClientId';    Label = 'AzureAD.ClientId' },
         @{ Path = 'LocalAD.Server';      Label = 'LocalAD.Server' },
         @{ Path = 'LocalAD.TargetOU';    Label = 'LocalAD.TargetOU' },
-        @{ Path = 'LocalAD.GroupsOU';    Label = 'LocalAD.GroupsOU' },
-        @{ Path = 'Kerberos.Realm';      Label = 'Kerberos.Realm' }
+        @{ Path = 'LocalAD.GroupsOU';    Label = 'LocalAD.GroupsOU' }
     )
     foreach ($r in $required) {
         $parts = $r.Path -split '\.'

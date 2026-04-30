@@ -30,13 +30,6 @@
     Password for RunAsUser when not using SYSTEM or a Group Managed Service Account.
     Accepts a SecureString. If omitted for a non-SYSTEM user, the cmdlet will prompt.
 
-.PARAMETER SkipKerberos
-    Pass -SkipKerberos to Invoke-AzureSync.ps1. Use if Kerberos SPN/keytab management
-    is handled separately or not needed on this schedule.
-
-.PARAMETER SkipCertificates
-    Pass -SkipCertificates to Invoke-AzureSync.ps1.
-
 .PARAMETER ConfigPath
     Pass a custom -ConfigPath to Invoke-AzureSync.ps1. If omitted, Invoke-AzureSync.ps1
     uses its default (.\config\sync-config.json relative to the repo root).
@@ -56,10 +49,6 @@
     .\src\Register-SyncTask.ps1 -IntervalMinutes 15 -RunAsUser 'CORP\svc-azuresync'
 
 .EXAMPLE
-    # Skip Kerberos on the scheduled run (managed separately)
-    .\src\Register-SyncTask.ps1 -SkipKerberos -Force
-
-.EXAMPLE
     # Preview what would be registered without writing anything
     .\src\Register-SyncTask.ps1 -WhatIf
 
@@ -76,8 +65,6 @@ param(
     [int]$IntervalMinutes    = 30,
     [string]$RunAsUser       = 'SYSTEM',
     [SecureString]$RunAsPassword,
-    [switch]$SkipKerberos,
-    [switch]$SkipCertificates,
     [string]$ConfigPath      = '',
     [switch]$Force,
     [switch]$Unregister
@@ -148,8 +135,6 @@ $syncArgs = @(
     '-ExecutionPolicy', 'RemoteSigned',
     '-File', "`"$syncScriptFull`""
 )
-if ($SkipKerberos)    { $syncArgs += '-SkipKerberos' }
-if ($SkipCertificates){ $syncArgs += '-SkipCertificates' }
 if ($ConfigPath)      { $syncArgs += '-ConfigPath'; $syncArgs += "`"$ConfigPath`"" }
 
 $actionArguments = $syncArgs -join ' '

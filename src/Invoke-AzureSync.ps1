@@ -16,12 +16,6 @@
 .PARAMETER SkipGroups
     Skip security group and membership sync.
 
-.PARAMETER SkipCertificates
-    Skip PKINIT certificate sync.
-
-.PARAMETER SkipKerberos
-    Skip SPN registration and keytab export.
-
 .PARAMETER ConfigPath
     Path to sync-config.json. Defaults to .\config\sync-config.json.
 
@@ -52,8 +46,6 @@ param(
     [switch]$DryRun,
     [switch]$SkipUsers,
     [switch]$SkipGroups,
-    [switch]$SkipCertificates,
-    [switch]$SkipKerberos,
     [string]$ConfigPath = '',
     [switch]$RegisterTask
 )
@@ -96,8 +88,6 @@ if ($RegisterTask) {
     if ($taskCfg.TaskName)         { $taskArgs += '-TaskName';         $taskArgs += $taskCfg.TaskName }
     if ($taskCfg.IntervalMinutes)  { $taskArgs += '-IntervalMinutes';  $taskArgs += [string]$taskCfg.IntervalMinutes }
     if ($taskCfg.RunAsUser)        { $taskArgs += '-RunAsUser';        $taskArgs += $taskCfg.RunAsUser }
-    if ($taskCfg.SkipKerberos)     { $taskArgs += '-SkipKerberos' }
-    if ($taskCfg.SkipCertificates) { $taskArgs += '-SkipCertificates' }
     if ($ConfigPath)               { $taskArgs += '-ConfigPath'; $taskArgs += $ConfigPath }
 
     Write-SyncLog "Registering scheduled task with config from ScheduledTask section..."
@@ -136,14 +126,6 @@ if (-not $SkipUsers) {
 
 if (-not $SkipGroups) {
     Invoke-Step 'Sync Groups' 'Sync-Groups.ps1'
-}
-
-if (-not $SkipCertificates) {
-    Invoke-Step 'Sync User Certificates (PKINIT)' 'Sync-UserCertificates.ps1'
-}
-
-if (-not $SkipKerberos) {
-    Invoke-Step 'Set Kerberos SPNs + Keytabs' 'Set-KerberosSpn.ps1'
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────

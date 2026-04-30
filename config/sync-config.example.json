@@ -26,29 +26,6 @@
     "CompanyName":       "Company"
   },
 
-  "Kerberos": {
-    "Realm": "CORP.EXAMPLE.COM",
-    "KeytabOutputPath": "C:\\keytabs",
-    "ServiceAccounts": [
-      {
-        "SamAccountName": "svc-fileserver",
-        "FQDN": "fileserver01.corp.example.com",
-        "ServiceClass": "cifs"
-      },
-      {
-        "SamAccountName": "svc-nfs",
-        "FQDN": "nfsserver01.corp.example.com",
-        "ServiceClass": "nfs"
-      }
-    ]
-  },
-
-  "PKINIT": {
-    "Enabled": true,
-    "CACertificatePath": "C:\\certs\\issuing-ca.cer",
-    "CertificateSource": "EntraCBA"
-  },
-
   "Sync": {
     "DryRun": false,
     "DisableDeletedUsers": true,
@@ -60,8 +37,6 @@
   "ScheduledTask": {
     "TaskName": "AzureSync",
     "IntervalMinutes": 30,
-    "RunAsUser": "SYSTEM",
-    "SkipKerberos": false,
-    "SkipCertificates": false
+    "RunAsUser": "SYSTEM"
   }
 }

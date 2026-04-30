@@ -19,12 +19,6 @@
 .PARAMETER SkipGroups
     Passed through to Invoke-AzureSync.ps1.
 
-.PARAMETER SkipCertificates
-    Passed through to Invoke-AzureSync.ps1.
-
-.PARAMETER SkipKerberos
-    Passed through to Invoke-AzureSync.ps1.
-
 .PARAMETER ConfigPath
     Passed through to Invoke-AzureSync.ps1.
 
@@ -48,8 +42,6 @@ param(
     [switch]$DryRun,
     [switch]$SkipUsers,
     [switch]$SkipGroups,
-    [switch]$SkipCertificates,
-    [switch]$SkipKerberos,
     [string]$ConfigPath = '',
     [switch]$SkipPrerequisites
 )
@@ -66,8 +58,6 @@ if (-not $isAdmin) {
     if ($DryRun)            { $argList += '-DryRun' }
     if ($SkipUsers)         { $argList += '-SkipUsers' }
     if ($SkipGroups)        { $argList += '-SkipGroups' }
-    if ($SkipCertificates)  { $argList += '-SkipCertificates' }
-    if ($SkipKerberos)      { $argList += '-SkipKerberos' }
     if ($SkipPrerequisites) { $argList += '-SkipPrerequisites' }
     if ($ConfigPath)        { $argList += "-ConfigPath `"$ConfigPath`"" }
 
@@ -109,8 +99,6 @@ $syncArgs = @()
 if ($DryRun)           { $syncArgs += '-DryRun' }
 if ($SkipUsers)        { $syncArgs += '-SkipUsers' }
 if ($SkipGroups)       { $syncArgs += '-SkipGroups' }
-if ($SkipCertificates) { $syncArgs += '-SkipCertificates' }
-if ($SkipKerberos)     { $syncArgs += '-SkipKerberos' }
 if ($ConfigPath)       { $syncArgs += '-ConfigPath'; $syncArgs += $ConfigPath }
 
 & $syncScript @syncArgs

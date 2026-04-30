@@ -15,7 +15,6 @@
       - User.Read.All
       - Group.Read.All
       - GroupMember.Read.All
-      - UserAuthenticationMethod.Read.All   (for PKINIT cert fetch)
 #>
 
 Set-StrictMode -Version Latest
@@ -28,8 +27,7 @@ Write-SyncLog "Connecting to Microsoft Graph (tenant: $($cfg.TenantId))..."
 $requiredScopes = @(
     'User.Read.All',
     'Group.Read.All',
-    'GroupMember.Read.All',
-    'UserAuthenticationMethod.Read.All'
+    'GroupMember.Read.All'
 )
 
 $connectParams = @{
