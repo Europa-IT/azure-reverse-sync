@@ -32,10 +32,6 @@
 .EXAMPLE
     # Normal sync, prerequisites already installed
     .\Start-AzureSync.ps1 -SkipPrerequisites
-
-.EXAMPLE
-    # Sync users and groups only
-    .\Start-AzureSync.ps1 -SkipCertificates -SkipKerberos -SkipPrerequisites
 #>
 
 param(

@@ -33,10 +33,6 @@
     .\src\Invoke-AzureSync.ps1
 
 .EXAMPLE
-    # Sync only users and groups, skip certificates and Kerberos
-    .\src\Invoke-AzureSync.ps1 -SkipCertificates -SkipKerberos
-
-.EXAMPLE
     # Register the scheduled task using settings from sync-config.json
     .\src\Invoke-AzureSync.ps1 -RegisterTask
 #>

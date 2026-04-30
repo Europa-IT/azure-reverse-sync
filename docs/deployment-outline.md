@@ -13,16 +13,10 @@ ensure nothing touches existing user accounts until the final production cutover
 ```
 Phase 0 — Environment prep (no AD writes)
 Phase 1 — Dry-run validation (no AD writes)
-Phase 2 — Sandbox OU smoke test (isolated OU, no production users)
-Phase 3 — Pilot group rollout (subset of real users, isolated OU)
-Phase 4 — Production cutover
-Phase 5 — Kerberos / PKINIT enablement
+Phase 2 — Production cutover
 ```
 
-Phases 0–2 carry zero risk to deployed assets. Phases 3–4 introduce real users under a
-controlled scope. Phase 5 is additive-only (SPNs and keytabs do not modify existing
-objects destructively).
-
+Phases 0 and 1 carry zero risk to deployed assets. Phase 2 begins writing users and groups to the on-prem AD environment.
 ---
 
 ## Phase 0 — Environment Preparation
@@ -48,7 +42,6 @@ objects destructively).
    | `User.Read.All` | Identity sync |
    | `Group.Read.All` | Group sync |
    | `GroupMember.Read.All` | Group sync |
-   | `UserAuthenticationMethod.Read.All` | PKINIT cert sync |
 
 ### 0.2  Create isolated OUs in on-prem AD
 
@@ -109,129 +102,17 @@ to Active Directory.
 | User creation candidates | `[DRYRUN] Would create user: ...` for each Azure user not yet in AD |
 | Group creation candidates | `[DRYRUN] Would create group: ...` |
 | Account state | `[DRYRUN] Would disable/enable: ...` for any mismatches |
-| Certificate sync | `[DRYRUN] Would write N certificate(s) to ...` |
-| Kerberos SPNs | `[DRYRUN] Would register SPN: ...` |
 
 **Go/no-go:** All dry-run entries are plausible (correct UPNs, expected group names,
 correct realm). No unexpected `ERROR` lines.
 
 ---
 
-## Phase 2 — Sandbox Smoke Test
-
-**Goal:** Perform a live write to the isolated `SyncSandbox` OU using a single test
-user. No production users are touched.
-
-### 2.1  Create a test user in Azure AD
-
-Create a test account (e.g., `sync-test-user@corp.example.com`) in Azure AD. This
-account must not correspond to any existing on-prem AD user.
-
-### 2.2  Configure sync-config.json to target the sandbox OU
-
-Temporarily set:
-```json
-"LocalAD": {
-  "TargetOU":   "OU=SyncSandbox,DC=corp,DC=example,DC=com",
-  "GroupsOU":   "OU=SyncSandbox,DC=corp,DC=example,DC=com",
-  "DisabledOU": "OU=SyncSandbox,DC=corp,DC=example,DC=com"
-}
-```
-
-### 2.3  Run live sync against the sandbox
-
-```powershell
-# Skip Kerberos keytab generation for now; that requires a real service account
-.\src\Invoke-AzureSync.ps1 -SkipKerberos
-```
-
-### 2.4  Verify in AD
-
-```powershell
-Get-ADUser -Filter { extensionAttribute1 -like '*' } `
-           -SearchBase "OU=SyncSandbox,DC=corp,DC=example,DC=com" `
-           -Properties extensionAttribute1, EmailAddress, Department |
-    Format-Table Name, UserPrincipalName, extensionAttribute1, Department
-```
-
-Expected: the test user exists with correct attributes and `extensionAttribute1` set
-to their Azure AD Object ID.
-
-### 2.5  Test account state sync
-
-Disable `sync-test-user` in Azure AD portal. Wait 1 minute, then re-run:
-```powershell
-.\src\Invoke-AzureSync.ps1 -SkipKerberos -SkipCertificates -SkipGroups
-```
-Verify the AD account is disabled:
-```powershell
-Get-ADUser sync-test-user -Properties Enabled | Select-Object Enabled
-# Expected: Enabled = False
-```
-
-Re-enable the user in Azure AD and confirm it flips back.
-
-**Go/no-go:** User created with correct attributes, account state follows Azure AD,
-`extensionAttribute1` is set, no errors in log.
-
----
-
-## Phase 3 — Pilot Group Rollout
-
-**Goal:** Sync a controlled subset of real users to the production OUs.
-
-### 3.1  Update sync-config.json to target production OUs
-
-```json
-"LocalAD": {
-  "TargetOU":   "OU=AzureSyncedUsers,DC=corp,DC=example,DC=com",
-  "GroupsOU":   "OU=AzureSyncedGroups,DC=corp,DC=example,DC=com",
-  "DisabledOU": "OU=AzureSyncedDisabled,DC=corp,DC=example,DC=com"
-}
-```
-
-### 3.2  Scope Azure AD to a pilot group (optional but recommended)
-
-If only a subset of users should sync initially, add a group filter in
-`Sync-Users.ps1`. This is not yet configurable via `sync-config.json` and requires a
-small code change or manual Graph filter.
-
-### 3.3  Run dry-run against production OUs
-
-```powershell
-.\src\Invoke-AzureSync.ps1 -DryRun
-```
-
-Confirm log shows pilot users only, no unexpected accounts.
-
-### 3.4  Live pilot sync
-
-```powershell
-.\src\Invoke-AzureSync.ps1 -SkipKerberos
-```
-
-**Verify:**
-- Pilot users appear in `OU=AzureSyncedUsers` with correct attributes
-- Existing users in **other** OUs are untouched (confirm with `Get-ADUser` against those OUs)
-- Security groups created in `OU=AzureSyncedGroups` with correct memberships
-
-**Rollback:** To undo pilot users, disable their AD accounts and move to `AzureSyncedDisabled` OU.
-The users' pre-existing AD objects (in other OUs) are unaffected since this tool only manages
-users it created (identified by `extensionAttribute1`).
-
-**Go/no-go:** Pilot users sync correctly, Kerberos works, no unintended AD changes.
-
----
-
-## Phase 4 — Production Cutover
+## Phase 2 — Production Cutover
 
 **Goal:** Enable full sync for all Azure AD users.
 
-### 4.1  Remove any pilot group scope filter
-
-Ensure `Sync-Users.ps1` fetches all users (no group filter).
-
-### 4.2  Final dry-run
+### 2.1  Final dry-run
 
 ```powershell
 .\src\Invoke-AzureSync.ps1 -DryRun 2>&1 | Tee-Object logs\pre-cutover-dryrun.log
@@ -240,10 +121,10 @@ Ensure `Sync-Users.ps1` fetches all users (no group filter).
 Review `logs\pre-cutover-dryrun.log`. Confirm the count of users to be created matches
 expectations. Archive this log.
 
-### 4.3  Live cutover sync
+### 2.2  Live cutover sync
 
 ```powershell
-.\src\Invoke-AzureSync.ps1 -SkipKerberos
+.\src\Invoke-AzureSync.ps1 
 ```
 
 Monitor `logs\sync.log` in real time:
@@ -251,11 +132,11 @@ Monitor `logs\sync.log` in real time:
 Get-Content logs\sync.log -Wait
 ```
 
-### 4.4  Schedule recurring sync
+### 2.3  Schedule recurring sync
 
 ```powershell
 $action   = New-ScheduledTaskAction -Execute 'powershell.exe' `
-                -Argument '-NonInteractive -File "C:\azure-reverse-sync\src\Invoke-AzureSync.ps1" -SkipKerberos'
+                -Argument '-NonInteractive -File "C:\azure-reverse-sync\src\Invoke-AzureSync.ps1"'
 $trigger  = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 30) -Once -At (Get-Date)
 $settings = New-ScheduledTaskSettingsSet -RunOnlyIfNetworkAvailable -StartWhenAvailable
 Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
@@ -263,59 +144,6 @@ Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
 ```
 
 **Go/no-go:** All expected users synced, scheduled task running, no ERROR lines in log.
-
----
-
-## Phase 5 — Kerberos SPN and PKINIT Enablement
-
-**Goal:** Register Kerberos service accounts and optionally enable PKINIT for
-certificate-based end-user Kerberos.
-
-These operations are additive: registering SPNs does not remove any existing SPNs on
-other accounts, and writing `userCertificate` to a user object does not affect any
-existing attributes or Kerberos TGT flows.
-
-### 5.1  Create service accounts in AD
-
-For each entry in `config.Kerberos.ServiceAccounts`:
-```powershell
-New-ADUser -Name svc-fileserver -SamAccountName svc-fileserver `
-           -Path "OU=ServiceAccounts,DC=corp,DC=example,DC=com" `
-           -Enabled $true -PasswordNeverExpires $true
-```
-
-### 5.2  Run SPN + keytab generation
-
-```powershell
-.\src\Invoke-AzureSync.ps1 -SkipUsers -SkipGroups -SkipCertificates
-```
-
-Verify:
-```powershell
-setspn -L svc-fileserver
-# Expected: cifs/fileserver01.corp.example.com listed
-```
-
-Deploy keytab to the file server (copy from `config.Kerberos.KeytabOutputPath`).
-Test with `klist` on a client after accessing the share.
-
-### 5.3  Enable PKINIT certificate sync (optional)
-
-Ensure `config.PKINIT.Enabled = true` and `CACertificatePath` points to the issuing
-CA certificate. Then run:
-
-```powershell
-.\src\Invoke-AzureSync.ps1 -SkipUsers -SkipGroups -SkipKerberos
-```
-
-Verify with `kinit` using a certificate credential on a test user.
-
-### 5.4  Enable full scheduled sync including certificates
-
-Update the scheduled task to remove the `-SkipKerberos` flag (or leave it if SPNs
-are managed manually), and remove `-SkipCertificates` if PKINIT was validated.
-
----
 
 ## Rollback Reference
 
@@ -332,7 +160,4 @@ are managed manually), and remove `-SkipCertificates` if PKINIT was validated.
 
 - [ ] Phase 0: Graph API returns users; no AD errors
 - [ ] Phase 1: Dry-run log matches expected user/group set; no ERROR lines
-- [ ] Phase 2: Sandbox user created with correct attributes; account state follows Azure AD
-- [ ] Phase 3: Pilot users synced; existing AD users in other OUs unmodified
-- [ ] Phase 4: Full sync completes; scheduled task running; no errors
-- [ ] Phase 5: SPNs verified with `setspn`; keytab deployed; Kerberos ticket confirmed
+- [ ] Phase 2: Full sync completes; scheduled task running; no errors
