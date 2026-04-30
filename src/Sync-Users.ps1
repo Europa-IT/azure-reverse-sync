@@ -92,7 +92,7 @@ foreach ($gUser in $graphUsers) {
             }
 
             if ($script:DryRun) {
-                Write-SyncLog "[DRYRUN] Would create user: $($gUser.UserPrincipalName) (SAM: $samAccount)"
+                Write-SyncLog "Would create user: $($gUser.UserPrincipalName) (SAM: $samAccount)"
             } else {
                 $tempPw = New-SecureRandomPassword
                 New-ADUser @newUserParams -AccountPassword $tempPw
@@ -127,7 +127,7 @@ foreach ($gUser in $graphUsers) {
 
             if ($changes.Count -gt 0) {
                 if ($script:DryRun) {
-                    Write-SyncLog "[DRYRUN] Would update $($gUser.UserPrincipalName): $($changes.Keys -join ', ')"
+                    Write-SyncLog "Would update $($gUser.UserPrincipalName): $($changes.Keys -join ', ')"
                 } else {
                     Set-ADUser @setParams -Replace $changes
                     Write-SyncLog "Updated $($gUser.UserPrincipalName): $($changes.Keys -join ', ')"

@@ -37,8 +37,19 @@ Describe 'Test-AdGroupExists' -Tag 'Unit' {
 Describe 'Sync-Groups SamAccountName truncation' -Tag 'Unit' {
 
     It 'truncates group name to 20 characters for SamAccountName' {
-        $longName = 'This-Is-A-Very-Long-Group-Name-That-Exceeds-Limit'
-        $sam = ($longName -replace '[^a-zA-Z0-9_-]', '').Substring(0, [Math]::Min($longName.Length, 20))
+        $longName  = 'This-Is-A-Very-Long-Group-Name-That-Exceeds-Limit'
+        $sanitized = $longName -replace '[^a-zA-Z0-9_-]', ''
+        $sam       = $sanitized.Substring(0, [Math]::Min($sanitized.Length, 20))
+        $sam.Length | Should -BeLessOrEqual 20
+    }
+
+    It 'handles group names where special-char removal shortens below 20 characters' {
+        # If the sanitized name is shorter than $groupName.Length, using the original
+        # length would throw ArgumentOutOfRangeException — this verifies the fix.
+        $nameWithSpecials = '!!!ShortName!!!'   # sanitized = 'ShortName' (9 chars < 15 original)
+        $sanitized = $nameWithSpecials -replace '[^a-zA-Z0-9_-]', ''
+        $sam       = $sanitized.Substring(0, [Math]::Min($sanitized.Length, 20))
+        $sam | Should -Be 'ShortName'
         $sam.Length | Should -BeLessOrEqual 20
     }
 }

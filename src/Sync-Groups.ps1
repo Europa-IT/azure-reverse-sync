@@ -44,12 +44,13 @@ foreach ($azGroup in $azureGroups) {
             # ── Create new AD group ───────────────────────────────────────────
             $groupName = $azGroup.DisplayName
             if ($script:DryRun) {
-                Write-SyncLog "[DRYRUN] Would create group: $groupName"
+                Write-SyncLog "Would create group: $groupName"
             } else {
+                $sanitizedGroupName = $groupName -replace '[^a-zA-Z0-9_-]', ''
                 $newGroupParams = @{
                     Server          = $adSrv
                     Name            = $groupName
-                    SamAccountName  = ($groupName -replace '[^a-zA-Z0-9_-]', '').Substring(0, [Math]::Min($groupName.Length, 20))
+                    SamAccountName  = $sanitizedGroupName.Substring(0, [Math]::Min($sanitizedGroupName.Length, 20))
                     Path            = $groupsOU
                     GroupScope      = 'Global'
                     GroupCategory   = 'Security'

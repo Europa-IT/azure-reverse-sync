@@ -6,7 +6,6 @@
     - Installs the Microsoft.Graph PowerShell module
     - Installs Pester v5 for running tests
     - Confirms the ActiveDirectory RSAT module is available
-    - Confirms certutil.exe is available (needed for NTAuth CA trust)
 .EXAMPLE
     .\Install-Prerequisites.ps1
 #>
@@ -66,9 +65,7 @@ if ($graphModule) {
 # Ensure the submodules used by this tooling are available
 $requiredSubmodules = @(
     'Microsoft.Graph.Users',
-    'Microsoft.Graph.Groups',
-    'Microsoft.Graph.Applications',
-    'Microsoft.Graph.Identity.SignIns'
+    'Microsoft.Graph.Groups'
 )
 foreach ($sub in $requiredSubmodules) {
     if (-not (Get-Module -ListAvailable -Name $sub)) {
