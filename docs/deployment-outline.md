@@ -134,13 +134,21 @@ Get-Content logs\sync.log -Wait
 
 ### 2.3  Schedule recurring sync
 
+Configure `ScheduledTask` in `sync-config.json` (TaskName, IntervalMinutes, RunAsUser), then register it:
+
 ```powershell
-$action   = New-ScheduledTaskAction -Execute 'powershell.exe' `
-                -Argument '-NonInteractive -File "C:\azure-reverse-sync\src\Invoke-AzureSync.ps1"'
-$trigger  = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 30) -Once -At (Get-Date)
-$settings = New-ScheduledTaskSettingsSet -RunOnlyIfNetworkAvailable -StartWhenAvailable
-Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
-    -Settings $settings -RunLevel Highest -User 'CORP\svc-azuresync'
+# Register using settings from sync-config.json
+.\src\Invoke-AzureSync.ps1 -RegisterTask
+```
+
+Or call the script directly for more control:
+
+```powershell
+# Every 15 minutes, run as a dedicated service account
+.\src\Register-SyncTask.ps1 -IntervalMinutes 15 -RunAsUser 'CORP\svc-azuresync'
+
+# Preview without registering
+.\src\Register-SyncTask.ps1 -WhatIf
 ```
 
 **Go/no-go:** All expected users synced, scheduled task running, no ERROR lines in log.
@@ -152,7 +160,6 @@ Register-ScheduledTask -TaskName 'AzureSync' -Action $action -Trigger $trigger `
 | Stop all syncing immediately | Disable the `AzureSync` scheduled task |
 | Undo a bad attribute change | `Set-ADUser -Identity <user> -<Attr> <previous-value>` — only this tool's managed attributes are affected |
 | Remove all synced users | `Get-ADUser -Filter { extensionAttribute1 -like '*' } -SearchBase <TargetOU> \| Disable-ADAccount` — existing users in other OUs are untouched |
-| Remove a stale SPN | `Set-ADUser svc-fileserver -ServicePrincipalNames @{Remove="cifs/fileserver01.corp.example.com"}` |
 
 ---
 
