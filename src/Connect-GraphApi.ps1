@@ -50,8 +50,13 @@ if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
     # ── Client secret (fallback - only for dev; production should use cert) ───
     Write-SyncLog "Using client secret from config. Use certificate auth in production." -Level WARN
     $secureSecret = $cfg.ClientSecret | ConvertTo-SecureString -AsPlainText -Force
-    $credential   = [System.Management.Automation.PSCredential]::new($cfg.ClientId, $secureSecret)
-    $connectParams['ClientSecretCredential'] = $credential
+    # Credential is not prepared correctly here (I think)
+    $credential = [System.Management.Automation.PSCredential]::new($cfg.ClientId, $secureSecret)
+
+    $connectParams = @{
+        TenantId               = $cfg.TenantId
+        ClientSecretCredential = $credential
+    }
 
 } else {
     # ── Try Windows Credential Manager, then fall back to device code flow ────
