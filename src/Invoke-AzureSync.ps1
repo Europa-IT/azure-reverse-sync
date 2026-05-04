@@ -132,7 +132,7 @@ if (-not $SkipGroups) {
 $elapsed = (Get-Date) - $overallStart
 Write-SyncLog ""
 Write-SyncLog "================================================================"
-Write-SyncLog "azure-reverse-sync finished [$mode] in $([int]$elapsed.TotalSeconds)s — Errors: $overallErrors"
+Write-SyncLog "azure-reverse-sync finished [$mode] in $([int]$elapsed.TotalSeconds)s - Errors: $overallErrors"
 Write-SyncLog "================================================================"
 
 if ($overallErrors -gt 0) { exit 1 } else { exit 0 }
