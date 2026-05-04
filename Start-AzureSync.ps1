@@ -97,7 +97,7 @@ $syncArgs = @()
 if ($DryRun)           { $syncArgs += '-DryRun' }
 if ($SkipUsers)        { $syncArgs += '-SkipUsers' }
 if ($SkipGroups)       { $syncArgs += '-SkipGroups' }
-if ($ConfigPath)       { $syncArgs += '-ConfigPath'; $syncArgs += $ConfigPath }
+if ($ConfigPath)       { $syncArgs += '-ConfigPath $ConfigPath' }
 
 # Debug
 write-host $syncArgs
