@@ -91,9 +91,15 @@ foreach ($azGroup in $azureGroups) {
 
         # Add missing members
         foreach ($azMemberId in $azureMembers) {
+
+            Write-Debug "Checking $azMemberId against $(adGroup.Name)"
+
             if (-not $adMemberByAzureOid.ContainsKey($azMemberId)) {
                 $adUser = Test-AdUserExists -AzureObjectId $azMemberId -Server $adSrv
                 if ($adUser) {
+
+                    Write-Debug "User $(adUser.name) matched, needs to be added to group."
+
                     Add-ADGroupMember -Identity $adGroup.DistinguishedName `
                                       -Members $adUser.DistinguishedName -Server $adSrv
                     Write-SyncLog "Added $($adUser.UserPrincipalName) to group $($azGroup.DisplayName)"
@@ -107,7 +113,13 @@ foreach ($azGroup in $azureGroups) {
 
         # Remove extra members (in AD but not in Azure)
         foreach ($oid in $adMemberByAzureOid.Keys) {
+
+            Write-Debug "Checking $oid against $(adGroup.name)"
+
             if ($oid -notin $azureMembers) {
+
+                Write-Debug "$(adMemberByAzureOid[$oid].Name) removed from $(adGroup.Name)"
+
                 Remove-ADGroupMember -Identity $adGroup.DistinguishedName `
                                      -Members $adMemberByAzureOid[$oid] -Server $adSrv -Confirm:$false
                 Write-SyncLog "Removed Azure OID $oid from group $($azGroup.DisplayName)"
