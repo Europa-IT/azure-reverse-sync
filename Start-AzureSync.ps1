@@ -99,6 +99,9 @@ if ($SkipUsers)        { $syncArgs += '-SkipUsers' }
 if ($SkipGroups)       { $syncArgs += '-SkipGroups' }
 if ($ConfigPath)       { $syncArgs += '-ConfigPath'; $syncArgs += $ConfigPath }
 
+# Debug
+write-host $syncArgs
+
 & $syncScript @syncArgs
 Read-Host "Completed with exit code $LASTEXITCODE, press Enter to exit"
 exit $LASTEXITCODE
