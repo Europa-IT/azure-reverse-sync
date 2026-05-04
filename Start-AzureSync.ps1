@@ -93,11 +93,12 @@ if (-not $SkipPrerequisites) {
 # ── 5. Run the sync ───────────────────────────────────────────────────────────
 Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
-$syncArgs = @()
-if ($DryRun)           { $syncArgs += '-DryRun' }
-if ($SkipUsers)        { $syncArgs += '-SkipUsers' }
-if ($SkipGroups)       { $syncArgs += '-SkipGroups' }
-if ($ConfigPath)       { $syncArgs += "-ConfigPath $ConfigPath" }
+$syncArgs = @{
+    DryRun = ($null -ne $DryRun)
+    SkipUsers = ($null -ne $SkipUsers)
+    SkipGroups = ($null -ne $SkipGroups)
+    ConfigPath = $ConfigPath
+}
 
 # Debug
 write-host $syncArgs
