@@ -110,7 +110,7 @@ function Invoke-Step {
     $path = Join-Path $scriptRoot "src\$ScriptFile"
     Write-SyncLog "-- $Name --"
     try {
-        . $path
+        . $path -Debug
     } catch {
         Write-SyncLog "Step '$Name' failed: $_" -Level ERROR
         $script:overallErrors++
