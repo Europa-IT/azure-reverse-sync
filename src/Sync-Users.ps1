@@ -109,7 +109,7 @@ foreach ($gUser in $graphUsers) {
                 DisplayName  = 'DisplayName'
                 GivenName    = 'GivenName'
                 Surname      = 'Surname'
-                EmailAddress = 'Mail'
+                Mail         = 'Mail'
                 Department   = 'Department'
                 Title        = 'JobTitle'
                 MobilePhone  = 'MobilePhone'
