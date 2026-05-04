@@ -95,9 +95,9 @@ Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
 Write-Host "DryRun: $DryRun, SkipUsers: $SkipUsers, SkipGroups: $SkipGroups, ConfigPath: $ConfigPath"
 $syncArgs = @{
-    DryRun     = ($null -ne $DryRun)
-    SkipUsers  = ($null -ne $SkipUsers)
-    SkipGroups = ($null -ne $SkipGroups)
+    DryRun     = if ($null -ne $DryRun) {$DryRun} else {$false}
+    SkipUsers  = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
+    SkipGroups = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
     ConfigPath = $ConfigPath
 }
 
