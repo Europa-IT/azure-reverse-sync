@@ -52,6 +52,8 @@ foreach ($azGroup in $azureGroups) {
                 Write-SyncLog "Created group: $groupName"
             }
             $stats.Created++
+        } else {
+            Write-Debug "AD Group $(adGroup.Name) already exists."
         }
 
         if ($script:DryRun) {
