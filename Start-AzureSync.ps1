@@ -94,14 +94,14 @@ if (-not $SkipPrerequisites) {
 Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
 $syncArgs = @{
-    DryRun = ($null -ne $DryRun)
-    SkipUsers = ($null -ne $SkipUsers)
+    DryRun     = ($null -ne $DryRun)
+    SkipUsers  = ($null -ne $SkipUsers)
     SkipGroups = ($null -ne $SkipGroups)
     ConfigPath = $ConfigPath
 }
 
 # Debug
-write-host $syncArgs
+$syncArgs
 
 & $syncScript @syncArgs
 Read-Host "Completed with exit code $LASTEXITCODE, press Enter to exit"
