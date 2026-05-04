@@ -97,7 +97,7 @@ if ($RegisterTask) {
 
 $mode = if ($script:DryRun) { 'DRY RUN' } else { 'LIVE' }
 Write-SyncLog "================================================================"
-Write-SyncLog "azure-reverse-sync started [$mode] — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-SyncLog "azure-reverse-sync started [$mode] - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-SyncLog "================================================================"
 
 $overallStart = Get-Date
