@@ -22,7 +22,6 @@ $adSrv    = $cfg.LocalAD.Server
 $groupsOU = $cfg.LocalAD.GroupsOU
 
 Write-SyncLog "=== Sync-Groups started ==="
-Write-Host "DEBUG: Testing DEBUG output, it's working."
 
 $azureGroups = Get-MgGroup -All -Filter "securityEnabled eq true" `
                             -Property 'id,displayName,description,mailNickname'
@@ -91,12 +90,18 @@ foreach ($azGroup in $azureGroups) {
             }
         }
 
+        if ($adGroup.Name -eq "Group Testing") {
+            Write-Host "DEBUG: AD members by OID: $adMembersByAzureOid"
+        }
+
         $ActuallyUpdated = $false
 
         # Add missing members
         foreach ($azMemberId in $azureMembers) {
 
-            Write-Host "DEBUG: Checking $azMemberId against $($adGroup.Name)"
+            if ($adGroup.Name -eq "Group Testing") {
+                Write-Host "DEBUG: Checking $azMemberId against $($adGroup.Name)"
+            }
 
             if (-not $adMemberByAzureOid.ContainsKey($azMemberId)) {
                 $adUser = Test-AdUserExists -AzureObjectId $azMemberId -Server $adSrv
@@ -118,7 +123,9 @@ foreach ($azGroup in $azureGroups) {
         # Remove extra members (in AD but not in Azure)
         foreach ($oid in $adMemberByAzureOid.Keys) {
 
-            Write-Host "DEBUG: Checking $oid against $($adGroup.Name)"
+            if ($adGroup.Name -eq "Group Testing") {
+                Write-Host "DEBUG: Checking $oid against $($adGroup.Name)"
+            }
 
             if ($oid -notin $azureMembers) {
 
