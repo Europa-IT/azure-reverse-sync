@@ -4,7 +4,9 @@
 .DESCRIPTION
     For each security group in Azure AD:
       - Creates the group in LocalAD.GroupsOU if it doesn't exist.
-      - Stores the Azure Group OID in msDS-cloudExtensionAttribute1 for reconciliation.
+      - Stores the Azure Group OID in adminDescription for reconciliation.
+        (msDS-cloudExtensionAttribute1 is User-only; adminDescription is available
+        on all AD object types via the Top abstract class.)
       - Adds/removes members to match Azure AD group membership.
         Members must already exist as on-prem AD users (synced by Sync-Users.ps1).
 
@@ -54,7 +56,7 @@ foreach ($azGroup in $azureGroups) {
                     Path            = $groupsOU
                     GroupScope      = 'Global'
                     GroupCategory   = 'Security'
-                    OtherAttributes = @{ 'msDS-cloudExtensionAttribute1' = $azGroup.Id }
+                    OtherAttributes = @{ adminDescription = $azGroup.Id }
                 }
                 if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }
                 $adGroup = New-ADGroup @newGroupParams -PassThru

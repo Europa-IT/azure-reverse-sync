@@ -148,7 +148,11 @@ function Test-AdUserExists {
 function Test-AdGroupExists {
     <#
     .SYNOPSIS
-        Returns the AD group whose msDS-cloudExtensionAttribute1 matches the given Azure OID, or $null.
+        Returns the AD group whose adminDescription matches the given Azure OID, or $null.
+    .DESCRIPTION
+        Groups do not carry the msDS-cloudExtensionAttribute1 schema (that auxiliary class is
+        User-only). adminDescription is defined on the Top abstract class and is therefore
+        available on all AD object types including groups.
     #>
     param(
         [Parameter(Mandatory)][string]$AzureObjectId,
@@ -156,9 +160,9 @@ function Test-AdGroupExists {
     )
 
     try {
-        $group = Get-ADGroup -Filter "msDS-cloudExtensionAttribute1 -eq '$AzureObjectId'" `
+        $group = Get-ADGroup -Filter "adminDescription -eq '$AzureObjectId'" `
                              -Server $Server `
-                             -Properties 'msDS-cloudExtensionAttribute1' `
+                             -Properties adminDescription `
                              -ErrorAction SilentlyContinue
         return $group
     } catch {

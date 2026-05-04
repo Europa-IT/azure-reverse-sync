@@ -17,20 +17,20 @@ BeforeAll {
 
 Describe 'Test-AdGroupExists' -Tag 'Unit' {
 
-    It 'returns null when no AD group has a matching msDS-cloudExtensionAttribute1' {
+    It 'returns null when no AD group has a matching adminDescription' {
         Mock Get-ADGroup { return $null }
         $result = Test-AdGroupExists -AzureObjectId 'no-such-oid' -Server 'dc01.test'
         $result | Should -BeNullOrEmpty
     }
 
-    It 'returns the group when msDS-cloudExtensionAttribute1 matches' {
+    It 'returns the group when adminDescription matches' {
         $fakeGroup = [PSCustomObject]@{
             DistinguishedName = 'CN=TestGroup,OU=Groups,DC=test,DC=local'
-            'msDS-cloudExtensionAttribute1' = 'azure-group-oid-123'
+            adminDescription  = 'azure-group-oid-123'
         }
         Mock Get-ADGroup { return $fakeGroup }
         $result = Test-AdGroupExists -AzureObjectId 'azure-group-oid-123' -Server 'dc01.test'
-        $result.'msDS-cloudExtensionAttribute1' | Should -Be 'azure-group-oid-123'
+        $result.adminDescription | Should -Be 'azure-group-oid-123'
     }
 }
 
