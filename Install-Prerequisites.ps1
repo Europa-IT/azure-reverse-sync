@@ -18,19 +18,19 @@ function Write-Step {
     param (
         [string]$Message
     )
-    Write-Host "  $Message" -ForegroundColor Cyan
+    Write-Host $Message -ForegroundColor Cyan
 }
 function Write-OK {
     param (
         [string]$Message
     )
-    Write-Host "  [OK] $Message" -ForegroundColor Green
+    Write-Host "[OK] $Message" -ForegroundColor Green
 }
 function Write-Fail {
     param (
         [string]$Message
     )
-    Write-Host "  [FAIL] $Message" -ForegroundColor Red
+    Write-Host "[FAIL] $Message" -ForegroundColor Red
 }
 
 Write-Host "azure-reverse-sync — Prerequisites Setup" -ForegroundColor White
