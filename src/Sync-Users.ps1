@@ -14,8 +14,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$cfg    = $script:Config
-$adSrv  = $cfg.LocalAD.Server
+$cfg      = $script:Config
+$adSrv    = $cfg.LocalAD.Server
 $targetOU = $cfg.LocalAD.TargetOU
 
 Write-SyncLog "=== Sync-Users started ==="
