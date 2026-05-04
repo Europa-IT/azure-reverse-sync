@@ -99,7 +99,7 @@ $syncArgs = @{
     DryRun        = if ($null -ne $DryRun) {$DryRun} else {$false}
     SkipUsers     = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
     SkipGroups    = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
-    RegisterTas   = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
+    RegisterTask   = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
     ConfigPath    = $ConfigPath
 }
 
