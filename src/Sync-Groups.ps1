@@ -14,6 +14,7 @@
 #>
 
 Set-StrictMode -Version Latest
+Set-PSDebug -Strict
 $ErrorActionPreference = 'Stop'
 
 $cfg      = $script:Config
