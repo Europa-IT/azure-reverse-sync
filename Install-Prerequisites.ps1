@@ -6,6 +6,7 @@
     - Installs the Microsoft.Graph PowerShell module
     - Installs Pester v5 for running tests
     - Confirms the ActiveDirectory RSAT module is available
+    - Confirms certutil.exe is available (needed for NTAuth CA trust)
 .EXAMPLE
     .\Install-Prerequisites.ps1
 #>
@@ -13,13 +14,22 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Write-Step([string]$Message) {
+function Write-Step {
+    param (
+        [string]$Message
+    )
     Write-Host "  $Message" -ForegroundColor Cyan
 }
-function Write-OK([string]$Message) {
+function Write-OK {
+    param (
+        [string]$Message
+    )
     Write-Host "  [OK] $Message" -ForegroundColor Green
 }
-function Write-Fail([string]$Message) {
+function Write-Fail {
+    param (
+        [string]$Message
+    )
     Write-Host "  [FAIL] $Message" -ForegroundColor Red
 }
 
@@ -46,7 +56,7 @@ if (Get-Module -ListAvailable -Name ActiveDirectory) {
     } catch {
         Write-Fail "Could not install ActiveDirectory module automatically."
         Write-Fail "On Windows Server: Install-WindowsFeature RSAT-AD-PowerShell"
-        Write-Fail "On Windows 10/11: Settings > Optional Features > RSAT: Active Directory Domain Services and Lightweight Directory Services Tools"
+        Write-Fail "On Windows 10/11: Settings `> Optional Features `> RSAT: Active Directory Domain Services and Lightweight Directory Services Tools"
         exit 1
     }
 }
