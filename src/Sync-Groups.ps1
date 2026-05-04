@@ -22,6 +22,7 @@ $adSrv    = $cfg.LocalAD.Server
 $groupsOU = $cfg.LocalAD.GroupsOU
 
 Write-SyncLog "=== Sync-Groups started ==="
+Write-Debug "Testing DEBUG output, it's working."
 
 $azureGroups = Get-MgGroup -All -Filter "securityEnabled eq true" `
                             -Property 'id,displayName,description,mailNickname'
