@@ -32,9 +32,10 @@ $requiredScopes = @(
 )
 
 $connectParams = @{
-    ClientId  = $cfg.ClientId
-    TenantId  = $cfg.TenantId
-    NoWelcome = $true
+    ClientId     = $cfg.ClientId
+    TenantId     = $cfg.TenantId
+    NoWelcome    = $true
+    ContextScope = "Process"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
