@@ -3,7 +3,7 @@
     Entry point for azure-reverse-sync. Elevates to Administrator if needed,
     sets execution policy, installs prerequisites, then runs the sync.
 .DESCRIPTION
-    Run this script directly — it handles everything:
+    Run this script directly - it handles everything:
       1. Re-launches itself as Administrator if not already elevated.
       2. Sets the process execution policy to RemoteSigned for this session.
       3. Runs Install-Prerequisites.ps1 to ensure all required modules are present.
@@ -47,7 +47,7 @@ $currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.Win
 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host "Not running as Administrator — relaunching elevated..." -ForegroundColor Yellow
+    Write-Host "Not running as Administrator - relaunching elevated..." -ForegroundColor Yellow
 
     # Rebuild the argument list to pass through to the elevated process
     $argList = @("-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File", "`"$PSCommandPath`"")

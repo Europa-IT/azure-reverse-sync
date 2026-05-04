@@ -143,4 +143,4 @@ foreach ($gUser in $graphUsers) {
     }
 }
 
-Write-SyncLog "=== Sync-Users complete — Created: $($stats.Created), Updated: $($stats.Updated), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="
+Write-SyncLog "=== Sync-Users complete - Created: $($stats.Created), Updated: $($stats.Updated), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="

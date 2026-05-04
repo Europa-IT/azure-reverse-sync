@@ -96,7 +96,7 @@ foreach ($azGroup in $azureGroups) {
                     Write-SyncLog "Added $($adUser.UserPrincipalName) to group $($azGroup.DisplayName)"
                     $stats.MembersAdded++
                 } else {
-                    Write-SyncLog "Skipping member Azure OID $azMemberId — not yet synced to on-prem AD" -Level WARN
+                    Write-SyncLog "Skipping member Azure OID $azMemberId - not yet synced to on-prem AD" -Level WARN
                 }
             }
         }
@@ -119,4 +119,4 @@ foreach ($azGroup in $azureGroups) {
     }
 }
 
-Write-SyncLog "=== Sync-Groups complete — Created: $($stats.Created), Updated: $($stats.Updated), MembersAdded: $($stats.MembersAdded), MembersRemoved: $($stats.MembersRemoved), Errors: $($stats.Errors) ==="
+Write-SyncLog "=== Sync-Groups complete - Created: $($stats.Created), Updated: $($stats.Updated), MembersAdded: $($stats.MembersAdded), MembersRemoved: $($stats.MembersRemoved), Errors: $($stats.Errors) ==="
