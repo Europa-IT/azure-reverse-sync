@@ -59,6 +59,7 @@ if (-not $isAdmin) {
     if ($SkipPrerequisites) { $argList += '-SkipPrerequisites' }
     if ($ConfigPath)        { $argList += "-ConfigPath `"$ConfigPath`"" }
 
+    # This probably doesn't work
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
     exit $LASTEXITCODE
 }
@@ -95,10 +96,11 @@ Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
 Write-Host "DryRun: $DryRun, SkipUsers: $SkipUsers, SkipGroups: $SkipGroups, ConfigPath: $ConfigPath"
 $syncArgs = @{
-    DryRun     = if ($null -ne $DryRun) {$DryRun} else {$false}
-    SkipUsers  = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
-    SkipGroups = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
-    ConfigPath = $ConfigPath
+    DryRun        = if ($null -ne $DryRun) {$DryRun} else {$false}
+    SkipUsers     = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
+    SkipGroups    = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
+    RegisterTas   = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
+    ConfigPath    = $ConfigPath
 }
 
 # Debug
