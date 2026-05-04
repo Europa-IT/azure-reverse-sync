@@ -71,7 +71,11 @@ foreach ($azGroup in $azureGroups) {
         }
 
         # -- Reconcile membership ---------------------------------------------
-        $azureMembers = Get-MgGroupMember -GroupId $azGroup.Id -All | Select-Object -ExpandProperty Id
+        # @() ensures $azureMembers is always an array, even when the Graph
+        # pipeline returns a single item (bare string) or nothing ($null).
+        # This matters for the -notin check below: .Contains() on a bare
+        # [string] is a substring check, and .Contains() on $null throws.
+        $azureMembers = @(Get-MgGroupMember -GroupId $azGroup.Id -All | Select-Object -ExpandProperty Id)
 
         # Get current on-prem AD members (only users, not nested groups for now)
         $adMembers = @()
@@ -107,9 +111,8 @@ foreach ($azGroup in $azureGroups) {
         }
 
         # Remove extra members (in AD but not in Azure)
-        # TODO Hey Claude, look here.
         foreach ($oid in $adMemberByAzureOid.Keys) {
-            if (-not $azureMembers.Contains($oid)) {
+            if ($oid -notin $azureMembers) {
                 Remove-ADGroupMember -Identity $adGroup.DistinguishedName `
                                      -Members $adMemberByAzureOid[$oid] -Server $adSrv -Confirm:$false
                 Write-SyncLog "Removed Azure OID $oid from group $($azGroup.DisplayName)"
