@@ -14,7 +14,6 @@
 #>
 
 Set-StrictMode -Version Latest
-Set-PSDebug -Strict
 $ErrorActionPreference = 'Stop'
 
 $cfg      = $script:Config
@@ -53,9 +52,7 @@ foreach ($azGroup in $azureGroups) {
                 Write-SyncLog "Created group: $groupName"
             }
             $stats.Created++
-        } else {
-            Write-Host "DEBUG: AD Group $adGroup already exists."
-        }
+        } 
 
         if ($script:DryRun) {
             $stats.Skipped++
@@ -90,26 +87,13 @@ foreach ($azGroup in $azureGroups) {
             }
         }
 
-        if ($adGroup.Name -eq "Group Testing") {
-            Write-Host "DEBUG: AD members by OID: $($adMemberByAzureOid | Out-String )"
-            Write-Host "DEBUG: Azure members: $azureMembers"
-        }
-
         $ActuallyUpdated = $false
 
         # Add missing members
         foreach ($azMemberId in $azureMembers) {
-
-            if ($adGroup.Name -eq "Group Testing") {
-                Write-Host "DEBUG: Checking $azMemberId against $($adGroup.Name)"
-            }
-
             if (-not $adMemberByAzureOid.ContainsKey($azMemberId)) {
                 $adUser = Test-AdUserExists -AzureObjectId $azMemberId -Server $adSrv
                 if ($adUser) {
-
-                    Write-Host "DEBUG: User $(adUser.name) matched, needs to be added to group."
-
                     Add-ADGroupMember -Identity $adGroup.DistinguishedName `
                                       -Members $adUser.DistinguishedName -Server $adSrv
                     Write-SyncLog "Added $($adUser.UserPrincipalName) to group $($azGroup.DisplayName)"
@@ -123,15 +107,7 @@ foreach ($azGroup in $azureGroups) {
 
         # Remove extra members (in AD but not in Azure)
         foreach ($oid in $adMemberByAzureOid.Keys) {
-
-            if ($adGroup.Name -eq "Group Testing") {
-                Write-Host "DEBUG: Checking $oid against $($adGroup.Name)"
-            }
-
             if ($oid -notin $azureMembers) {
-
-                Write-Host "DEBUG: $(adMemberByAzureOid[$oid].Name) removed from $($adGroup.Name)"
-
                 Remove-ADGroupMember -Identity $adGroup.DistinguishedName `
                                      -Members $adMemberByAzureOid[$oid] -Server $adSrv -Confirm:$false
                 Write-SyncLog "Removed Azure OID $oid from group $($azGroup.DisplayName)"
