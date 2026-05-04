@@ -42,6 +42,8 @@ param(
     [switch]$SkipPrerequisites
 )
 
+Set-StrictMode -Off
+
 # ── 1. Elevate to Administrator if needed ────────────────────────────────────
 $currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
