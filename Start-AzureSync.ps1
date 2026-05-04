@@ -38,7 +38,7 @@ param(
     [switch]$DryRun,
     [switch]$SkipUsers,
     [switch]$SkipGroups,
-    [string]$ConfigPath = '',
+    [string]$ConfigPath = '.\config\sync-config.json',
     [switch]$SkipPrerequisites
 )
 
