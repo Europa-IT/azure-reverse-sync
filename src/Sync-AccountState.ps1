@@ -44,7 +44,7 @@ foreach ($adUser in $managedAdUsers) {
             # ── User removed from Azure AD ────────────────────────────────────
             if ($cfg.Sync.DisableDeletedUsers) {
                 if ($script:DryRun) {
-                    Write-SyncLog "[DRYRUN] Would disable+move deleted user: $($adUser.UserPrincipalName)"
+                    Write-SyncLog "Would disable+move deleted user: $($adUser.UserPrincipalName)"
                 } else {
                     Disable-ADAccount -Identity $adUser.DistinguishedName -Server $adSrv
                     Move-ADObject -Identity $adUser.DistinguishedName -TargetPath $disabledOU -Server $adSrv
@@ -61,7 +61,7 @@ foreach ($adUser in $managedAdUsers) {
 
         if ($shouldBeEnabled -and -not $adUser.Enabled) {
             if ($script:DryRun) {
-                Write-SyncLog "[DRYRUN] Would enable: $($adUser.UserPrincipalName)"
+                Write-SyncLog "Would enable: $($adUser.UserPrincipalName)"
             } else {
                 Enable-ADAccount -Identity $adUser.DistinguishedName -Server $adSrv
                 Write-SyncLog "Enabled: $($adUser.UserPrincipalName)"
@@ -70,7 +70,7 @@ foreach ($adUser in $managedAdUsers) {
 
         } elseif (-not $shouldBeEnabled -and $adUser.Enabled) {
             if ($script:DryRun) {
-                Write-SyncLog "[DRYRUN] Would disable: $($adUser.UserPrincipalName)"
+                Write-SyncLog "Would disable: $($adUser.UserPrincipalName)"
             } else {
                 Disable-ADAccount -Identity $adUser.DistinguishedName -Server $adSrv
                 Write-SyncLog "Disabled: $($adUser.UserPrincipalName)"

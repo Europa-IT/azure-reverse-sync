@@ -75,9 +75,7 @@ if ($graphModule) {
 # Ensure the submodules used by this tooling are available
 $requiredSubmodules = @(
     'Microsoft.Graph.Users',
-    'Microsoft.Graph.Groups',
-    'Microsoft.Graph.Applications',
-    'Microsoft.Graph.Identity.SignIns'
+    'Microsoft.Graph.Groups'
 )
 foreach ($sub in $requiredSubmodules) {
     if (-not (Get-Module -ListAvailable -Name $sub)) {
