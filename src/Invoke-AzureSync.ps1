@@ -108,7 +108,6 @@ $overallErrors = 0
 function Invoke-Step {
     param([string]$Name, [string]$ScriptFile)
     $path = Join-Path $scriptRoot "src\$ScriptFile"
-    Write-SyncLog ""
     Write-SyncLog "── $Name ──"
     try {
         . $path
@@ -132,7 +131,6 @@ if (-not $SkipGroups) {
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 $elapsed = (Get-Date) - $overallStart
-Write-SyncLog ""
 Write-SyncLog "================================================================"
 Write-SyncLog "azure-reverse-sync finished [$mode] in $([int]$elapsed.TotalSeconds)s - Errors: $overallErrors"
 Write-SyncLog "================================================================"
