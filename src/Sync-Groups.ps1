@@ -22,17 +22,6 @@ $groupsOU = $cfg.LocalAD.GroupsOU
 
 Write-SyncLog "=== Sync-Groups started ==="
 
-# Pre-fetch all managed AD users (those with msDS-cloudExtensionAttribute1 set) and build a
-# DN -> Azure OID map. This eliminates per-member Get-ADUser calls inside the group loop,
-# reducing AD queries from O(members x groups) to a single upfront fetch.
-$managedAdUserMap = @{}  # DistinguishedName -> msDS-cloudExtensionAttribute1
-Get-ADUser -Filter "msDS-cloudExtensionAttribute1 -like '*-*-*-*-*'" `
-           -Server $adSrv `
-           -Properties 'msDS-cloudExtensionAttribute1' |
-    ForEach-Object {
-        $managedAdUserMap[$_.DistinguishedName] = $_.'msDS-cloudExtensionAttribute1'
-    }
-
 $azureGroups = Get-MgGroup -All -Filter "securityEnabled eq true" `
                             -Property 'id,displayName,description,mailNickname'
 
@@ -71,25 +60,31 @@ foreach ($azGroup in $azureGroups) {
         }
 
         # -- Reconcile membership ---------------------------------------------
-        # @() ensures $azureMembers is always an array, even when the Graph
-        # pipeline returns a single item (bare string) or nothing ($null).
-        # This matters for the -notin check below: .Contains() on a bare
-        # [string] is a substring check, and .Contains() on $null throws.
+        # @() ensures $azureMembers is always an array even when Graph returns
+        # a single item (bare string) or nothing ($null).
         $azureMembers = @(Get-MgGroupMember -GroupId $azGroup.Id -All | Select-Object -ExpandProperty Id)
 
         # Get current on-prem AD members (only users, not nested groups for now)
         $adMembers = @()
         if ($adGroup) {
-            $adMembers = Get-ADGroupMember -Identity $adGroup.DistinguishedName -Server $adSrv |
-                         Where-Object { $_.objectClass -eq 'user' }
+            $adMembers = @(Get-ADGroupMember -Identity $adGroup.DistinguishedName -Server $adSrv |
+                         Where-Object { $_.objectClass -eq 'user' })
         }
 
-        # Build map: Azure OID -> AD user DN for current AD members.
-        # Uses the pre-fetched $managedAdUserMap instead of per-member AD queries.
+        # Build map: Azure OID -> AD user DN for current AD group members.
+        # Query msDS-cloudExtensionAttribute1 directly on each member rather than
+        # using a pre-fetched DN-keyed map; the pre-fetch approach silently produced
+        # an empty map when Get-ADGroupMember DN types differed from Get-ADUser keys.
         $adMemberByAzureOid = @{}
         foreach ($adMember in $adMembers) {
-            $oid = $managedAdUserMap[$adMember.DistinguishedName]
-            if ($oid) { $adMemberByAzureOid[$oid] = $adMember.DistinguishedName }
+            $adUserObj = Get-ADUser -Identity $adMember.DistinguishedName `
+                                    -Server $adSrv `
+                                    -Properties 'msDS-cloudExtensionAttribute1' `
+                                    -ErrorAction SilentlyContinue
+            if ($adUserObj -and $adUserObj.'msDS-cloudExtensionAttribute1') {
+                $oid = [string]$adUserObj.'msDS-cloudExtensionAttribute1'
+                $adMemberByAzureOid[$oid] = $adMember.DistinguishedName
+            }
         }
 
         $ActuallyUpdated = $false
