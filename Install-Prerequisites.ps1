@@ -33,7 +33,7 @@ function Write-Fail {
     Write-Host "[FAIL] $Message" -ForegroundColor Red
 }
 
-Write-Host "azure-reverse-sync — Prerequisites Setup" -ForegroundColor White
+Write-Host "azure-reverse-sync - Prerequisites Setup" -ForegroundColor White
 Write-Host "=========================================`n"
 
 # ── 1. PowerShell version ────────────────────────────────────────────────────
