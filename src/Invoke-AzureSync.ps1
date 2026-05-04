@@ -49,7 +49,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$scriptRoot = $PSScriptRoot ? (Split-Path $PSScriptRoot -Parent) : (Get-Location).Path
+if ( $PSScriptRoot ){
+    $ScriptRoot = Split-Path $PSScriptRoot -Parent
+} else {
+    $ScriptRoot = (Get-Location).Path
+}
 
 # ── Load shared module ────────────────────────────────────────────────────────
 $modulePath = Join-Path $scriptRoot 'modules\AzureSync.psm1'
