@@ -92,6 +92,7 @@ foreach ($azGroup in $azureGroups) {
 
         if ($adGroup.Name -eq "Group Testing") {
             Write-Host "DEBUG: AD members by OID: $($adMemberByAzureOid | Out-String )"
+            Write-Host "DEBUG: Azure members: $azureMembers"
         }
 
         $ActuallyUpdated = $false
