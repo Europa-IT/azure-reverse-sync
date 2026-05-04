@@ -117,7 +117,7 @@ foreach ($azGroup in $azureGroups) {
         # Remove extra members (in AD but not in Azure)
         foreach ($oid in $adMemberByAzureOid.Keys) {
 
-            Write-Debug "Checking $oid against $(adGroup.name)"
+            Write-Debug "Checking $oid against $($adGroup.Name)"
 
             if ($oid -notin $azureMembers) {
 
