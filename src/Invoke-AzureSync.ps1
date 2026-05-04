@@ -42,23 +42,29 @@ param(
     [switch]$DryRun,
     [switch]$SkipUsers,
     [switch]$SkipGroups,
-    [string]$ConfigPath = '',
+    [string]$ConfigPath = ".\config\sync-config.json",
     [switch]$RegisterTask
 )
+
+Write-Host "DEBUG: $ConfigPath"
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$scriptRoot = $PSScriptRoot ? (Split-Path $PSScriptRoot -Parent) : (Get-Location).Path
+if ( $PSScriptRoot ){
+    $ScriptRoot = Split-Path $PSScriptRoot -Parent
+} else {
+    $ScriptRoot = (Get-Location).Path
+}
 
-# ── Load shared module ────────────────────────────────────────────────────────
+# -- Load shared module --------------------------------------------------------
 $modulePath = Join-Path $scriptRoot 'modules\AzureSync.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
 }
 Import-Module $modulePath -Force
 
-# ── Load configuration ────────────────────────────────────────────────────────
+# -- Load configuration --------------------------------------------------------
 $cfgArgs = @{}
 if ($ConfigPath) { $cfgArgs['ConfigPath'] = $ConfigPath }
 $script:Config = Get-SyncConfig @cfgArgs
@@ -70,7 +76,7 @@ if ($script:Config.Sync.DryRun -eq $true -and -not $DryRun.IsPresent) {
     Write-SyncLog "DryRun enabled via config file (Sync.DryRun = true)." -Level WARN
 }
 
-# ── Scheduled task registration (early exit) ──────────────────────────────────
+# -- Scheduled task registration (early exit) ----------------------------------
 if ($RegisterTask) {
     $taskCfg        = $script:Config.ScheduledTask
     $registerScript = Join-Path $scriptRoot 'src\Register-SyncTask.ps1'
@@ -93,7 +99,7 @@ if ($RegisterTask) {
 
 $mode = if ($script:DryRun) { 'DRY RUN' } else { 'LIVE' }
 Write-SyncLog "================================================================"
-Write-SyncLog "azure-reverse-sync started [$mode] — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-SyncLog "azure-reverse-sync started [$mode] - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-SyncLog "================================================================"
 
 $overallStart = Get-Date
@@ -102,8 +108,7 @@ $overallErrors = 0
 function Invoke-Step {
     param([string]$Name, [string]$ScriptFile)
     $path = Join-Path $scriptRoot "src\$ScriptFile"
-    Write-SyncLog ""
-    Write-SyncLog "── $Name ──"
+    Write-SyncLog "-- $Name --"
     try {
         . $path
     } catch {
@@ -112,7 +117,7 @@ function Invoke-Step {
     }
 }
 
-# ── Sync ──────────────────────────────────────────────────────────────────────
+# -- Sync ----------------------------------------------------------------------
 . (Join-Path $scriptRoot 'src\Connect-GraphApi.ps1')
 
 if (-not $SkipUsers) {
@@ -124,11 +129,10 @@ if (-not $SkipGroups) {
     Invoke-Step 'Sync Groups' 'Sync-Groups.ps1'
 }
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# -- Summary -------------------------------------------------------------------
 $elapsed = (Get-Date) - $overallStart
-Write-SyncLog ""
 Write-SyncLog "================================================================"
-Write-SyncLog "azure-reverse-sync finished [$mode] in $([int]$elapsed.TotalSeconds)s — Errors: $overallErrors"
+Write-SyncLog "azure-reverse-sync finished [$mode] in $([int]$elapsed.TotalSeconds)s - Errors: $overallErrors"
 Write-SyncLog "================================================================"
 
 if ($overallErrors -gt 0) { exit 1 } else { exit 0 }

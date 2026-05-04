@@ -18,25 +18,25 @@ function Write-Step {
     param (
         [string]$Message
     )
-    Write-Host "  $Message" -ForegroundColor Cyan
+    Write-Host $Message -ForegroundColor Cyan
 }
 function Write-OK {
     param (
         [string]$Message
     )
-    Write-Host "  [OK] $Message" -ForegroundColor Green
+    Write-Host "[OK] $Message" -ForegroundColor Green
 }
 function Write-Fail {
     param (
         [string]$Message
     )
-    Write-Host "  [FAIL] $Message" -ForegroundColor Red
+    Write-Host "[FAIL] $Message" -ForegroundColor Red
 }
 
-Write-Host "`nazure-reverse-sync — Prerequisites Setup" -ForegroundColor White
+Write-Host "azure-reverse-sync - Prerequisites Setup" -ForegroundColor White
 Write-Host "=========================================`n"
 
-# ── 1. PowerShell version ────────────────────────────────────────────────────
+# -- 1. PowerShell version ---------------------------------------------------
 Write-Step "Checking PowerShell version..."
 if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Fail "PowerShell 5.1 or later required. Current: $($PSVersionTable.PSVersion)"
@@ -44,7 +44,7 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 }
 Write-OK "PowerShell $($PSVersionTable.PSVersion)"
 
-# ── 2. ActiveDirectory module ────────────────────────────────────────────────
+# -- 2. ActiveDirectory module ------------------------------------------------
 Write-Step "Checking ActiveDirectory module (RSAT)..."
 if (Get-Module -ListAvailable -Name ActiveDirectory) {
     Write-OK "ActiveDirectory module found"
@@ -61,7 +61,7 @@ if (Get-Module -ListAvailable -Name ActiveDirectory) {
     }
 }
 
-# ── 3. Microsoft.Graph module ────────────────────────────────────────────────
+# -- 3. Microsoft.Graph module ------------------------------------------------
 Write-Step "Checking Microsoft.Graph module..."
 $graphModule = Get-Module -ListAvailable -Name Microsoft.Graph | Sort-Object Version -Descending | Select-Object -First 1
 if ($graphModule) {
@@ -85,7 +85,7 @@ foreach ($sub in $requiredSubmodules) {
     Write-OK "$sub available"
 }
 
-# ── 4. Pester v5 ─────────────────────────────────────────────────────────────
+# -- 4. Pester v5 -------------------------------------------------------------
 Write-Step "Checking Pester..."
 $pester = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
 if ($pester -and $pester.Version.Major -ge 5) {

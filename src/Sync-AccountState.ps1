@@ -56,7 +56,7 @@ foreach ($adUser in $managedAdUsers) {
             continue
         }
 
-        # ── User exists in Azure AD — sync enabled state ──────────────────────
+        # ── User exists in Azure AD - sync enabled state ──────────────────────
         $shouldBeEnabled = $azureUserMap[$azureOid]
 
         if ($shouldBeEnabled -and -not $adUser.Enabled) {
@@ -87,4 +87,4 @@ foreach ($adUser in $managedAdUsers) {
     }
 }
 
-Write-SyncLog "=== Sync-AccountState complete — Enabled: $($stats.Enabled), Disabled: $($stats.Disabled), Moved: $($stats.MovedToDisabled), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="
+Write-SyncLog "=== Sync-AccountState complete - Enabled: $($stats.Enabled), Disabled: $($stats.Disabled), Moved: $($stats.MovedToDisabled), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="

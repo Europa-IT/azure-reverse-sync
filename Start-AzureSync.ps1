@@ -3,7 +3,7 @@
     Entry point for azure-reverse-sync. Elevates to Administrator if needed,
     sets execution policy, installs prerequisites, then runs the sync.
 .DESCRIPTION
-    Run this script directly — it handles everything:
+    Run this script directly - it handles everything:
       1. Re-launches itself as Administrator if not already elevated.
       2. Sets the process execution policy to RemoteSigned for this session.
       3. Runs Install-Prerequisites.ps1 to ensure all required modules are present.
@@ -38,16 +38,18 @@ param(
     [switch]$DryRun,
     [switch]$SkipUsers,
     [switch]$SkipGroups,
-    [string]$ConfigPath = '',
+    [string]$ConfigPath = (Resolve-Path ".\config\sync-config.json"),
     [switch]$SkipPrerequisites
 )
+
+Set-StrictMode -Off
 
 # ── 1. Elevate to Administrator if needed ────────────────────────────────────
 $currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host "Not running as Administrator — relaunching elevated..." -ForegroundColor Yellow
+    Write-Host "Not running as Administrator - relaunching elevated..." -ForegroundColor Yellow
 
     # Rebuild the argument list to pass through to the elevated process
     $argList = @("-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File", "`"$PSCommandPath`"")
@@ -57,6 +59,7 @@ if (-not $isAdmin) {
     if ($SkipPrerequisites) { $argList += '-SkipPrerequisites' }
     if ($ConfigPath)        { $argList += "-ConfigPath `"$ConfigPath`"" }
 
+    # This probably doesn't work
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
     exit $LASTEXITCODE
 }
@@ -91,11 +94,17 @@ if (-not $SkipPrerequisites) {
 # ── 5. Run the sync ───────────────────────────────────────────────────────────
 Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
-$syncArgs = @()
-if ($DryRun)           { $syncArgs += '-DryRun' }
-if ($SkipUsers)        { $syncArgs += '-SkipUsers' }
-if ($SkipGroups)       { $syncArgs += '-SkipGroups' }
-if ($ConfigPath)       { $syncArgs += '-ConfigPath'; $syncArgs += $ConfigPath }
+Write-Host "DryRun: $DryRun, SkipUsers: $SkipUsers, SkipGroups: $SkipGroups, ConfigPath: $ConfigPath"
+$syncArgs = @{
+    DryRun        = if ($null -ne $DryRun) {$DryRun} else {$false}
+    SkipUsers     = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
+    SkipGroups    = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
+    RegisterTask   = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
+    ConfigPath    = $ConfigPath
+}
+
+# Debug
+$syncArgs
 
 & $syncScript @syncArgs
 Read-Host "Completed with exit code $LASTEXITCODE, press Enter to exit"

@@ -14,8 +14,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$cfg    = $script:Config
-$adSrv  = $cfg.LocalAD.Server
+$cfg      = $script:Config
+$adSrv    = $cfg.LocalAD.Server
 $targetOU = $cfg.LocalAD.TargetOU
 
 Write-SyncLog "=== Sync-Users started ==="
@@ -143,4 +143,4 @@ foreach ($gUser in $graphUsers) {
     }
 }
 
-Write-SyncLog "=== Sync-Users complete — Created: $($stats.Created), Updated: $($stats.Updated), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="
+Write-SyncLog "=== Sync-Users complete - Created: $($stats.Created), Updated: $($stats.Updated), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="
