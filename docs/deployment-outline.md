@@ -11,21 +11,21 @@ ensure nothing touches existing user accounts until the final production cutover
 ## Phases at a Glance
 
 ```
-Phase 0 — Environment prep (no AD writes)
-Phase 1 — Dry-run validation (no AD writes)
-Phase 2 — Production cutover
+Phase 0 -- Environment prep (no AD writes)
+Phase 1 -- Dry-run validation (no AD writes)
+Phase 2 -- Production cutover
 ```
 
 Phases 0 and 1 carry zero risk to deployed assets. Phase 2 begins writing users and groups to the on-prem AD environment.
 ---
 
-## Phase 0 — Environment Preparation
+## Phase 0 -- Environment Preparation
 
 **Goal:** Get all dependencies in place without touching AD.
 
 ### 0.1  Create an App Registration in Azure AD
 
-1. **Azure portal → Microsoft Entra ID → App registrations → New registration**
+1. **Azure portal -> Microsoft Entra ID -> App registrations -> New registration**
    - Name: `azure-reverse-sync` (or similar)
    - Supported account type: *Accounts in this organizational directory only*
 2. Note the **Application (client) ID** and **Directory (tenant) ID**.
@@ -85,7 +85,7 @@ Expected: one Azure AD user displayed. No AD writes have occurred.
 
 ---
 
-## Phase 1 — Dry-Run Validation
+## Phase 1 -- Dry-Run Validation
 
 **Goal:** Confirm the full sync logic produces the correct output without writing anything
 to Active Directory.
@@ -108,7 +108,7 @@ correct realm). No unexpected `ERROR` lines.
 
 ---
 
-## Phase 2 — Production Cutover
+## Phase 2 -- Production Cutover
 
 **Goal:** Enable full sync for all Azure AD users.
 
@@ -158,8 +158,8 @@ Or call the script directly for more control:
 | Scenario | Action |
 |---|---|
 | Stop all syncing immediately | Disable the `AzureSync` scheduled task |
-| Undo a bad attribute change | `Set-ADUser -Identity <user> -<Attr> <previous-value>` — only this tool's managed attributes are affected |
-| Remove all synced users | `Get-ADUser -Filter { extensionAttribute1 -like '*' } -SearchBase <TargetOU> \| Disable-ADAccount` — existing users in other OUs are untouched |
+| Undo a bad attribute change | `Set-ADUser -Identity <user> -<Attr> <previous-value>` -- only this tool's managed attributes are affected |
+| Remove all synced users | `Get-ADUser -Filter "msDS-cloudExtensionAttribute1 -like '*'" -SearchBase <TargetOU> \| Disable-ADAccount` -- existing users in other OUs are untouched |
 
 ---
 

@@ -4,7 +4,7 @@
 .DESCRIPTION
     For each security group in Azure AD:
       - Creates the group in LocalAD.GroupsOU if it doesn't exist.
-      - Stores the Azure Group OID in extensionAttribute1 for reconciliation.
+      - Stores the Azure Group OID in msDS-cloudExtensionAttribute1 for reconciliation.
       - Adds/removes members to match Azure AD group membership.
         Members must already exist as on-prem AD users (synced by Sync-Users.ps1).
 
@@ -20,15 +20,15 @@ $groupsOU = $cfg.LocalAD.GroupsOU
 
 Write-SyncLog "=== Sync-Groups started ==="
 
-# Pre-fetch all managed AD users (those with extensionAttribute1 set) and build a
-# DN → Azure OID map. This eliminates per-member Get-ADUser calls inside the group loop,
-# reducing AD queries from O(members × groups) to a single upfront fetch.
-$managedAdUserMap = @{}  # DistinguishedName → extensionAttribute1
-Get-ADUser -Filter { extensionAttribute1 -like '*-*-*-*-*' } `
+# Pre-fetch all managed AD users (those with msDS-cloudExtensionAttribute1 set) and build a
+# DN -> Azure OID map. This eliminates per-member Get-ADUser calls inside the group loop,
+# reducing AD queries from O(members x groups) to a single upfront fetch.
+$managedAdUserMap = @{}  # DistinguishedName -> msDS-cloudExtensionAttribute1
+Get-ADUser -Filter "msDS-cloudExtensionAttribute1 -like '*-*-*-*-*'" `
            -Server $adSrv `
-           -Properties extensionAttribute1 |
+           -Properties 'msDS-cloudExtensionAttribute1' |
     ForEach-Object {
-        $managedAdUserMap[$_.DistinguishedName] = $_.extensionAttribute1
+        $managedAdUserMap[$_.DistinguishedName] = $_.'msDS-cloudExtensionAttribute1'
     }
 
 $azureGroups = Get-MgGroup -All -Filter "securityEnabled eq true" `
@@ -41,7 +41,7 @@ foreach ($azGroup in $azureGroups) {
         $adGroup = Test-AdGroupExists -AzureObjectId $azGroup.Id -Server $adSrv
 
         if (-not $adGroup) {
-            # ── Create new AD group ───────────────────────────────────────────
+            # -- Create new AD group ------------------------------------------
             $groupName = $azGroup.DisplayName
             if ($script:DryRun) {
                 Write-SyncLog "Would create group: $groupName"
@@ -54,9 +54,9 @@ foreach ($azGroup in $azureGroups) {
                     Path            = $groupsOU
                     GroupScope      = 'Global'
                     GroupCategory   = 'Security'
-                    OtherAttributes = @{ extensionAttribute1 = $azGroup.Id }
+                    OtherAttributes = @{ 'msDS-cloudExtensionAttribute1' = $azGroup.Id }
                 }
-                if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }   
+                if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }
                 $adGroup = New-ADGroup @newGroupParams -PassThru
                 Write-SyncLog "Created group: $groupName"
             }
@@ -68,7 +68,7 @@ foreach ($azGroup in $azureGroups) {
             continue
         }
 
-        # ── Reconcile membership ──────────────────────────────────────────────
+        # -- Reconcile membership ---------------------------------------------
         $azureMembers = Get-MgGroupMember -GroupId $azGroup.Id -All | Select-Object -ExpandProperty Id
 
         # Get current on-prem AD members (only users, not nested groups for now)
@@ -78,7 +78,7 @@ foreach ($azGroup in $azureGroups) {
                          Where-Object { $_.objectClass -eq 'user' }
         }
 
-        # Build map: Azure OID → AD user DN for current AD members.
+        # Build map: Azure OID -> AD user DN for current AD members.
         # Uses the pre-fetched $managedAdUserMap instead of per-member AD queries.
         $adMemberByAzureOid = @{}
         foreach ($adMember in $adMembers) {

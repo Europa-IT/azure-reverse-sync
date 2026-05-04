@@ -17,20 +17,20 @@ BeforeAll {
 
 Describe 'Test-AdGroupExists' -Tag 'Unit' {
 
-    It 'returns null when no AD group has a matching extensionAttribute1' {
+    It 'returns null when no AD group has a matching msDS-cloudExtensionAttribute1' {
         Mock Get-ADGroup { return $null }
         $result = Test-AdGroupExists -AzureObjectId 'no-such-oid' -Server 'dc01.test'
         $result | Should -BeNullOrEmpty
     }
 
-    It 'returns the group when extensionAttribute1 matches' {
+    It 'returns the group when msDS-cloudExtensionAttribute1 matches' {
         $fakeGroup = [PSCustomObject]@{
             DistinguishedName = 'CN=TestGroup,OU=Groups,DC=test,DC=local'
-            extensionAttribute1 = 'azure-group-oid-123'
+            'msDS-cloudExtensionAttribute1' = 'azure-group-oid-123'
         }
         Mock Get-ADGroup { return $fakeGroup }
         $result = Test-AdGroupExists -AzureObjectId 'azure-group-oid-123' -Server 'dc01.test'
-        $result.extensionAttribute1 | Should -Be 'azure-group-oid-123'
+        $result.'msDS-cloudExtensionAttribute1' | Should -Be 'azure-group-oid-123'
     }
 }
 
@@ -45,7 +45,7 @@ Describe 'Sync-Groups SamAccountName truncation' -Tag 'Unit' {
 
     It 'handles group names where special-char removal shortens below 20 characters' {
         # If the sanitized name is shorter than $groupName.Length, using the original
-        # length would throw ArgumentOutOfRangeException — this verifies the fix.
+        # length would throw ArgumentOutOfRangeException -- this verifies the fix.
         $nameWithSpecials = '!!!ShortName!!!'   # sanitized = 'ShortName' (9 chars < 15 original)
         $sanitized = $nameWithSpecials -replace '[^a-zA-Z0-9_-]', ''
         $sam       = $sanitized.Substring(0, [Math]::Min($sanitized.Length, 20))

@@ -3,9 +3,9 @@
     Syncs Azure AD users to on-premises Active Directory.
 .DESCRIPTION
     For each user in Azure AD:
-      - Creates a new AD user if one with the matching Azure OID (extensionAttribute1) does not exist.
+      - Creates a new AD user if one with the matching Azure OID (msDS-cloudExtensionAttribute1) does not exist.
       - Updates an existing AD user's attributes if any have changed.
-      - Stores the Azure AD Object ID in extensionAttribute1 for stable identity reconciliation.
+      - Stores the Azure AD Object ID in msDS-cloudExtensionAttribute1 for stable identity reconciliation.
 
     Account enable/disable logic is handled separately by Sync-AccountState.ps1.
     Must be dot-sourced after Connect-GraphApi.ps1.
@@ -24,7 +24,7 @@ $filterGroupId     = $cfg.Sync.FilterGroupId
 $licensedUsersOnly = $cfg.Sync.LicensedUsersOnly -eq $true
 
 if ($filterGroupId) {
-    # ── Scope to members of a specific Azure AD group ─────────────────────────
+    # -- Scope to members of a specific Azure AD group ------------------------
     Write-SyncLog "Fetching users from filter group: $filterGroupId"
     $groupMemberIds = Get-MgGroupMember -GroupId $filterGroupId -All | Select-Object -ExpandProperty Id
     $graphUsers = foreach ($memberId in $groupMemberIds) {
@@ -35,7 +35,7 @@ if ($filterGroupId) {
         ) -ErrorAction SilentlyContinue
     }
 } elseif ($licensedUsersOnly) {
-    # ── Licensed users: Graph filter requires ConsistencyLevel header ─────────
+    # -- Licensed users: Graph filter requires ConsistencyLevel header ---------
     Write-SyncLog "Fetching licensed users only (LicensedUsersOnly = true)"
     $graphUsers = Get-MgUser -All `
         -Filter 'assignedLicenses/$count ne 0' `
@@ -66,9 +66,9 @@ foreach ($gUser in $graphUsers) {
         $existing = Test-AdUserExists -AzureObjectId $gUser.Id -Server $adSrv
 
         if (-not $existing) {
-            # ── Create new AD user ────────────────────────────────────────────
+            # -- Create new AD user -------------------------------------------
             $samAccount = $gUser.UserPrincipalName -replace '@.*', ''
-            # Ensure SAM is ≤ 20 chars and unique
+            # Ensure SAM is <= 20 chars and unique
             if ($samAccount.Length -gt 20) { $samAccount = $samAccount.Substring(0, 20) }
 
             $newUserParams = @{
@@ -83,7 +83,7 @@ foreach ($gUser in $graphUsers) {
                 EmailAddress           = $gUser.Mail
                 Enabled                = $true
                 ChangePasswordAtLogon  = $true
-                OtherAttributes        = @{ extensionAttribute1 = $gUser.Id }
+                OtherAttributes        = @{ 'msDS-cloudExtensionAttribute1' = $gUser.Id }
             }
 
             # Add optional mapped attributes
@@ -101,7 +101,7 @@ foreach ($gUser in $graphUsers) {
             $stats.Created++
 
         } else {
-            # ── Update existing AD user ───────────────────────────────────────
+            # -- Update existing AD user --------------------------------------
             $setParams = @{ Server = $adSrv; Identity = $existing.DistinguishedName }
             $changes   = @{}
 

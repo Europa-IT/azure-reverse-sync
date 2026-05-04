@@ -2,13 +2,13 @@
 .SYNOPSIS
     Syncs Azure AD account to on-premises Active Directory.
 .DESCRIPTION
-    For every on-prem AD user that was created by this tool (identified by extensionAttribute1
+    For every on-prem AD user that was created by this tool (identified by msDS-cloudExtensionAttribute1
     containing an Azure AD Object ID):
 
-      - If the Azure AD account is disabled  → Disable-ADAccount
-      - If the Azure AD account is enabled   → Enable-ADAccount
+      - If the Azure AD account is disabled  -> Disable-ADAccount
+      - If the Azure AD account is enabled   -> Enable-ADAccount
       - If the user no longer exists in Azure AD and DisableDeletedUsers = true
-          → Disable-ADAccount + move to DisabledOU
+          -> Disable-ADAccount + move to DisabledOU
 
     Must be dot-sourced after Sync-Users.ps1.
 #>
@@ -22,12 +22,12 @@ $disabledOU = $cfg.LocalAD.DisabledOU
 
 Write-SyncLog "=== Sync-AccountState started ==="
 
-# Fetch all on-prem users that have extensionAttribute1 set (managed by this tool)
-$managedAdUsers = Get-ADUser -Filter { extensionAttribute1 -like '*-*-*-*-*' } `
+# Fetch all on-prem users that have msDS-cloudExtensionAttribute1 set (managed by this tool)
+$managedAdUsers = Get-ADUser -Filter "msDS-cloudExtensionAttribute1 -like '*-*-*-*-*'" `
                              -Server $adSrv `
-                             -Properties extensionAttribute1, Enabled, DistinguishedName
+                             -Properties 'msDS-cloudExtensionAttribute1', Enabled, DistinguishedName
 
-# Fetch all Azure AD users once and build an OID → accountEnabled map.
+# Fetch all Azure AD users once and build an OID -> accountEnabled map.
 # This single call replaces both the ID-set lookup and the per-user Get-MgUser calls below,
 # reducing Graph API round-trips from N+1 (one per managed AD user) to 1.
 $azureUserMap = @{}
@@ -38,10 +38,10 @@ Get-MgUser -All -Property 'id,accountEnabled' | ForEach-Object {
 $stats = @{ Enabled = 0; Disabled = 0; MovedToDisabled = 0; Skipped = 0; Errors = 0 }
 
 foreach ($adUser in $managedAdUsers) {
-    $azureOid = $adUser.extensionAttribute1
+    $azureOid = $adUser.'msDS-cloudExtensionAttribute1'
     try {
         if (-not $azureUserMap.ContainsKey($azureOid)) {
-            # ── User removed from Azure AD ────────────────────────────────────
+            # -- User removed from Azure AD -----------------------------------
             if ($cfg.Sync.DisableDeletedUsers) {
                 if ($script:DryRun) {
                     Write-SyncLog "Would disable+move deleted user: $($adUser.UserPrincipalName)"
@@ -56,7 +56,7 @@ foreach ($adUser in $managedAdUsers) {
             continue
         }
 
-        # ── User exists in Azure AD - sync enabled state ──────────────────────
+        # -- User exists in Azure AD - sync enabled state ---------------------
         $shouldBeEnabled = $azureUserMap[$azureOid]
 
         if ($shouldBeEnabled -and -not $adUser.Enabled) {
