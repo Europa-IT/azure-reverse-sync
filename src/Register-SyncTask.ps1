@@ -81,26 +81,17 @@ $ErrorActionPreference = 'Stop'
 if ($Force) { $ConfirmPreference = 'None' }
 
 # ── Local logger ─────────────────────────────────────────────────────────────
-function Write-TaskLog {
-    param(
-        [Parameter(Mandatory)][string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
-    )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry     = "[$timestamp] [$Level] $Message"
-    switch ($Level) {
-        'WARN'  { Write-Host $entry -ForegroundColor Yellow }
-        'ERROR' { Write-Host $entry -ForegroundColor Red }
-        default { Write-Host $entry }
-    }
+if ( -not (Get-Module AzureSync -ErrorAction SilentlyContinue) ){
 
-    # Append to the sync log file if the module + config are already loaded
-    # TODO resolve bug here? "The variable '$script:Config' cannot be retrieved because it has not been set."
-    if ((Get-Module AzureSync -ErrorAction SilentlyContinue) -and
-        $script:Config -and $script:Config.Sync.LogPath) {
-        Add-Content -Path $script:Config.Sync.LogPath -Value $entry -Encoding UTF8
+    $ScriptRoot = Split-Path $PSScriptRoot -Parent
+    $modulePath = Join-Path $scriptRoot '..\modules\AzureSync.psm1'
+    if (-not (Test-Path $modulePath)) {
+        throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
     }
+    Import-Module $modulePath -Force
+
 }
+
 
 # ── Resolve the sync script path ─────────────────────────────────────────────
 $syncScript = Join-Path $RepoPath 'src\Invoke-AzureSync.ps1'
