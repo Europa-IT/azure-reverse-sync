@@ -1,6 +1,3 @@
-# Claude directory
-.claude/
-
 # Secrets and credentials
 config/sync-config.json
 *.pfx
