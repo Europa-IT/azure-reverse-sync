@@ -4,7 +4,9 @@
 .DESCRIPTION
     For each security group in Azure AD:
       - Creates the group in LocalAD.GroupsOU if it doesn't exist.
-      - Stores the Azure Group OID in extensionAttribute1 for reconciliation.
+      - Stores the Azure Group OID in adminDescription for reconciliation.
+        (msDS-cloudExtensionAttribute1 is User-only; adminDescription is available
+        on all AD object types via the Top abstract class.)
       - Adds/removes members to match Azure AD group membership.
         Members must already exist as on-prem AD users (synced by Sync-Users.ps1).
 
@@ -20,17 +22,6 @@ $groupsOU = $cfg.LocalAD.GroupsOU
 
 Write-SyncLog "=== Sync-Groups started ==="
 
-# Pre-fetch all managed AD users (those with extensionAttribute1 set) and build a
-# DN → Azure OID map. This eliminates per-member Get-ADUser calls inside the group loop,
-# reducing AD queries from O(members × groups) to a single upfront fetch.
-$managedAdUserMap = @{}  # DistinguishedName → extensionAttribute1
-Get-ADUser -Filter { extensionAttribute1 -like '*-*-*-*-*' } `
-           -Server $adSrv `
-           -Properties extensionAttribute1 |
-    ForEach-Object {
-        $managedAdUserMap[$_.DistinguishedName] = $_.extensionAttribute1
-    }
-
 $azureGroups = Get-MgGroup -All -Filter "securityEnabled eq true" `
                             -Property 'id,displayName,description,mailNickname'
 
@@ -41,7 +32,7 @@ foreach ($azGroup in $azureGroups) {
         $adGroup = Test-AdGroupExists -AzureObjectId $azGroup.Id -Server $adSrv
 
         if (-not $adGroup) {
-            # ── Create new AD group ───────────────────────────────────────────
+            # -- Create new AD group ------------------------------------------
             $groupName = $azGroup.DisplayName
             if ($script:DryRun) {
                 Write-SyncLog "Would create group: $groupName"
@@ -54,37 +45,49 @@ foreach ($azGroup in $azureGroups) {
                     Path            = $groupsOU
                     GroupScope      = 'Global'
                     GroupCategory   = 'Security'
-                    OtherAttributes = @{ extensionAttribute1 = $azGroup.Id }
+                    OtherAttributes = @{ adminDescription = $azGroup.Id }
                 }
-                if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }   
+                if ($azGroup.Description) { $newGroupParams['Description'] = $azGroup.Description }
                 $adGroup = New-ADGroup @newGroupParams -PassThru
                 Write-SyncLog "Created group: $groupName"
             }
             $stats.Created++
-        }
+        } 
 
         if ($script:DryRun) {
             $stats.Skipped++
             continue
         }
 
-        # ── Reconcile membership ──────────────────────────────────────────────
-        $azureMembers = Get-MgGroupMember -GroupId $azGroup.Id -All | Select-Object -ExpandProperty Id
+        # -- Reconcile membership ---------------------------------------------
+        # @() ensures $azureMembers is always an array even when Graph returns
+        # a single item (bare string) or nothing ($null).
+        $azureMembers = @(Get-MgGroupMember -GroupId $azGroup.Id -All | Select-Object -ExpandProperty Id)
 
         # Get current on-prem AD members (only users, not nested groups for now)
         $adMembers = @()
         if ($adGroup) {
-            $adMembers = Get-ADGroupMember -Identity $adGroup.DistinguishedName -Server $adSrv |
-                         Where-Object { $_.objectClass -eq 'user' }
+            $adMembers = @(Get-ADGroupMember -Identity $adGroup.DistinguishedName -Server $adSrv |
+                         Where-Object { $_.objectClass -eq 'user' })
         }
 
-        # Build map: Azure OID → AD user DN for current AD members.
-        # Uses the pre-fetched $managedAdUserMap instead of per-member AD queries.
+        # Build map: Azure OID -> AD user DN for current AD group members.
+        # Query msDS-cloudExtensionAttribute1 directly on each member rather than
+        # using a pre-fetched DN-keyed map; the pre-fetch approach silently produced
+        # an empty map when Get-ADGroupMember DN types differed from Get-ADUser keys.
         $adMemberByAzureOid = @{}
         foreach ($adMember in $adMembers) {
-            $oid = $managedAdUserMap[$adMember.DistinguishedName]
-            if ($oid) { $adMemberByAzureOid[$oid] = $adMember.DistinguishedName }
+            $adUserObj = Get-ADUser -Identity $adMember.DistinguishedName `
+                                    -Server $adSrv `
+                                    -Properties 'msDS-cloudExtensionAttribute1' `
+                                    -ErrorAction SilentlyContinue
+            if ($adUserObj -and $adUserObj.'msDS-cloudExtensionAttribute1') {
+                $oid = [string]$adUserObj.'msDS-cloudExtensionAttribute1'
+                $adMemberByAzureOid[$oid] = $adMember.DistinguishedName
+            }
         }
+
+        $ActuallyUpdated = $false
 
         # Add missing members
         foreach ($azMemberId in $azureMembers) {
@@ -95,6 +98,7 @@ foreach ($azGroup in $azureGroups) {
                                       -Members $adUser.DistinguishedName -Server $adSrv
                     Write-SyncLog "Added $($adUser.UserPrincipalName) to group $($azGroup.DisplayName)"
                     $stats.MembersAdded++
+                    $ActuallyUpdated = $true
                 } else {
                     Write-SyncLog "Skipping member Azure OID $azMemberId - not yet synced to on-prem AD" -Level WARN
                 }
@@ -103,15 +107,18 @@ foreach ($azGroup in $azureGroups) {
 
         # Remove extra members (in AD but not in Azure)
         foreach ($oid in $adMemberByAzureOid.Keys) {
-            if (-not $azureMembers.Contains($oid)) {
+            if ($oid -notin $azureMembers) {
                 Remove-ADGroupMember -Identity $adGroup.DistinguishedName `
                                      -Members $adMemberByAzureOid[$oid] -Server $adSrv -Confirm:$false
                 Write-SyncLog "Removed Azure OID $oid from group $($azGroup.DisplayName)"
                 $stats.MembersRemoved++
+                $ActuallyUpdated = $true
             }
         }
 
-        $stats.Updated++
+        if ($ActuallyUpdated) {
+            $stats.Updated++
+        }
 
     } catch {
         Write-SyncLog "Error processing group $($azGroup.DisplayName): $_" -Level ERROR

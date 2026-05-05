@@ -8,12 +8,12 @@
 
 Set-StrictMode -Version Latest
 
-# ── Module-level state ────────────────────────────────────────────────────────
+# -- Module-level state -------------------------------------------------------
 # Set by the orchestrator before dot-sourcing sub-scripts.
 $script:DryRun = $false
 $script:Config = $null
 
-# ── Write-SyncLog ─────────────────────────────────────────────────────────────
+# -- Write-SyncLog ------------------------------------------------------------
 function Write-SyncLog {
     <#
     .SYNOPSIS
@@ -45,7 +45,7 @@ function Write-SyncLog {
     }
 }
 
-# ── Get-SyncConfig ────────────────────────────────────────────────────────────
+# -- Get-SyncConfig -----------------------------------------------------------
 function Get-SyncConfig {
     <#
     .SYNOPSIS
@@ -87,7 +87,7 @@ function Get-SyncConfig {
     return $config
 }
 
-# ── ConvertTo-AdAttributes ────────────────────────────────────────────────────
+# -- ConvertTo-AdAttributes ---------------------------------------------------
 function ConvertTo-AdAttributes {
     <#
     .SYNOPSIS
@@ -117,14 +117,14 @@ function ConvertTo-AdAttributes {
     return $attrs
 }
 
-# ── Test-AdUserExists ─────────────────────────────────────────────────────────
+# -- Test-AdUserExists --------------------------------------------------------
 function Test-AdUserExists {
     <#
     .SYNOPSIS
-        Returns the AD user object whose extensionAttribute1 matches the given Azure OID,
+        Returns the AD user object whose msDS-cloudExtensionAttribute1 matches the given Azure OID,
         or $null if not found.
     .PARAMETER AzureObjectId
-        The Azure AD object ID stored in extensionAttribute1.
+        The Azure AD object ID stored in msDS-cloudExtensionAttribute1.
     .PARAMETER Server
         The AD domain controller to query.
     #>
@@ -134,9 +134,9 @@ function Test-AdUserExists {
     )
 
     try {
-        $user = Get-ADUser -Filter { extensionAttribute1 -eq $AzureObjectId } `
+        $user = Get-ADUser -Filter "msDS-cloudExtensionAttribute1 -eq '$AzureObjectId'" `
                            -Server $Server `
-                           -Properties extensionAttribute1, UserPrincipalName, Enabled `
+                           -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled `
                            -ErrorAction SilentlyContinue
         return $user
     } catch {
@@ -144,11 +144,15 @@ function Test-AdUserExists {
     }
 }
 
-# ── Test-AdGroupExists ────────────────────────────────────────────────────────
+# -- Test-AdGroupExists -------------------------------------------------------
 function Test-AdGroupExists {
     <#
     .SYNOPSIS
-        Returns the AD group whose extensionAttribute1 matches the given Azure OID, or $null.
+        Returns the AD group whose adminDescription matches the given Azure OID, or $null.
+    .DESCRIPTION
+        Groups do not carry the msDS-cloudExtensionAttribute1 schema (that auxiliary class is
+        User-only). adminDescription is defined on the Top abstract class and is therefore
+        available on all AD object types including groups.
     #>
     param(
         [Parameter(Mandatory)][string]$AzureObjectId,
@@ -156,9 +160,9 @@ function Test-AdGroupExists {
     )
 
     try {
-        $group = Get-ADGroup -Filter { extensionAttribute1 -eq $AzureObjectId } `
+        $group = Get-ADGroup -Filter "adminDescription -eq '$AzureObjectId'" `
                              -Server $Server `
-                             -Properties extensionAttribute1 `
+                             -Properties adminDescription `
                              -ErrorAction SilentlyContinue
         return $group
     } catch {
@@ -166,7 +170,7 @@ function Test-AdGroupExists {
     }
 }
 
-# ── New-RandomPassword ────────────────────────────────────────────────────────
+# -- New-RandomPassword -------------------------------------------------------
 function New-RandomPassword {
     <#
     .SYNOPSIS
@@ -206,7 +210,7 @@ function New-RandomPassword {
     )
 }
 
-# ── New-SecureRandomPassword ──────────────────────────────────────────────────
+# -- New-SecureRandomPassword -------------------------------------------------
 function New-SecureRandomPassword {
     <#
     .SYNOPSIS
