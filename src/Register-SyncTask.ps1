@@ -95,6 +95,7 @@ function Write-TaskLog {
     }
 
     # Append to the sync log file if the module + config are already loaded
+    # TODO resolve bug here? "The variable '$script:Config' cannot be retrieved because it has not been set."
     if ((Get-Module AzureSync -ErrorAction SilentlyContinue) -and
         $script:Config -and $script:Config.Sync.LogPath) {
         Add-Content -Path $script:Config.Sync.LogPath -Value $entry -Encoding UTF8
