@@ -134,6 +134,7 @@ function Write-LogEntry {
         if ($logDir -and -not (Test-Path $logDir)) {
             New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
+        # TODO resolve bug here, it is silently failing
         Add-Content -Path $runPath -Value $entry -Encoding UTF8
 
         if (-not $script:RetentionDone[$LogPath]) {
