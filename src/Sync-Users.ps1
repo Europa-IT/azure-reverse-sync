@@ -67,9 +67,14 @@ foreach ($gUser in $graphUsers) {
 
         if (-not $existing) {
             # -- Create new AD user -------------------------------------------
-            $samAccount = $gUser.UserPrincipalName -replace '@.*', ''
-            # Ensure SAM is <= 20 chars and unique
-            if ($samAccount.Length -gt 20) { $samAccount = $samAccount.Substring(0, 20) }
+            # Strip characters not allowed in SamAccountName (e.g. apostrophes, dots,
+            # spaces) before truncating, matching the sanitization Sync-Groups.ps1
+            # already applies to group names. Truncate via Math.Min so a sanitized
+            # value shorter than the original doesn't blow Substring with an
+            # ArgumentOutOfRangeException.
+            $samLocal   = $gUser.UserPrincipalName -replace '@.*', ''
+            $samAccount = $samLocal -replace '[^a-zA-Z0-9_-]', ''
+            $samAccount = $samAccount.Substring(0, [Math]::Min($samAccount.Length, 20))
 
             $newUserParams = @{
                 Server                 = $adSrv
