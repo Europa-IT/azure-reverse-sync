@@ -84,11 +84,15 @@ if ($RegisterTask) {
         exit 1
     }
 
-    $taskArgs = @('-Force')  # always re-register when called explicitly
-    if ($taskCfg.TaskName)         { $taskArgs += '-TaskName';         $taskArgs += $taskCfg.TaskName }
-    if ($taskCfg.IntervalMinutes)  { $taskArgs += '-IntervalMinutes';  $taskArgs += [string]$taskCfg.IntervalMinutes }
-    if ($taskCfg.RunAsUser)        { $taskArgs += '-RunAsUser';        $taskArgs += $taskCfg.RunAsUser }
-    if ($ConfigPath)               { $taskArgs += '-ConfigPath'; $taskArgs += $ConfigPath }
+    # Hashtable splat (named binding). Array splat is positional in PowerShell --
+    # the previous '-Foo','Bar' array was binding by position, sending the TaskName
+    # value into the [int]IntervalMinutes parameter and failing with
+    # "Cannot convert 'AzureSync' to System.Int32".
+    $taskArgs = @{ Force = $true }  # always re-register when called explicitly
+    if ($taskCfg.TaskName)        { $taskArgs.TaskName        = $taskCfg.TaskName }
+    if ($taskCfg.IntervalMinutes) { $taskArgs.IntervalMinutes = [int]$taskCfg.IntervalMinutes }
+    if ($taskCfg.RunAsUser)       { $taskArgs.RunAsUser       = $taskCfg.RunAsUser }
+    if ($ConfigPath)              { $taskArgs.ConfigPath      = $ConfigPath }
 
     Write-SyncLog "Registering scheduled task with config from ScheduledTask section..."
     & $registerScript @taskArgs
