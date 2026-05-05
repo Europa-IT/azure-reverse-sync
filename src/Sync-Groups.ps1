@@ -87,6 +87,8 @@ foreach ($azGroup in $azureGroups) {
             }
         }
 
+        $ActuallyUpdated = $false
+
         # Add missing members
         foreach ($azMemberId in $azureMembers) {
             if (-not $adMemberByAzureOid.ContainsKey($azMemberId)) {
@@ -96,6 +98,7 @@ foreach ($azGroup in $azureGroups) {
                                       -Members $adUser.DistinguishedName -Server $adSrv
                     Write-SyncLog "Added $($adUser.UserPrincipalName) to group $($azGroup.DisplayName)"
                     $stats.MembersAdded++
+                    $ActuallyUpdated = $true
                 } else {
                     Write-SyncLog "Skipping member Azure OID $azMemberId - not yet synced to on-prem AD" -Level WARN
                 }
@@ -109,10 +112,13 @@ foreach ($azGroup in $azureGroups) {
                                      -Members $adMemberByAzureOid[$oid] -Server $adSrv -Confirm:$false
                 Write-SyncLog "Removed Azure OID $oid from group $($azGroup.DisplayName)"
                 $stats.MembersRemoved++
+                $ActuallyUpdated = $true
             }
         }
 
-        $stats.Updated++
+        if ($ActuallyUpdated) {
+            $stats.Updated++
+        }
 
     } catch {
         Write-SyncLog "Error processing group $($azGroup.DisplayName): $_" -Level ERROR
