@@ -16,7 +16,7 @@ BeforeAll {
             JobTitle          = 'Title'
             MobilePhone       = 'MobilePhone'
         }
-        Sync         = [PSCustomObject]@{ DryRun = $false; LogPath = '' }
+        Sync         = [PSCustomObject]@{ DryRun = $false; LogPath = ''; FilterGroupId = ''; LicensedUsersOnly = $false }
         AzureAD      = [PSCustomObject]@{ TenantId = 'test-tenant'; ClientId = 'test-client'; CertificateThumbprint = '' }
     }
     $script:DryRun = $false

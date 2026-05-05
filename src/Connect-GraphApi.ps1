@@ -20,7 +20,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# What the hell is this Claude
 $cfg = $script:Config.AzureAD
 
 Write-SyncLog "Connecting to Microsoft Graph (tenant: $($cfg.TenantId))..."
@@ -51,7 +50,6 @@ if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
     # ── Client secret (fallback - only for dev; production should use cert) ───
     Write-SyncLog "Using client secret from config. Use certificate auth in production." -Level WARN
     $secureSecret = $cfg.ClientSecret | ConvertTo-SecureString -AsPlainText -Force
-    # Credential is not prepared correctly here (I think)
     $credential = [System.Management.Automation.PSCredential]::new($cfg.ClientId, $secureSecret)
 
     $connectParams = @{
