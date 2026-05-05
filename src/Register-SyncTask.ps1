@@ -90,6 +90,8 @@ if ( -not (Get-Module AzureSync -ErrorAction SilentlyContinue) ){
     }
     Import-Module $modulePath -Force
 
+} else {
+    Write-Host "DEBUG: Module is seen as imported."
 }
 
 
