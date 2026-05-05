@@ -37,6 +37,7 @@
   "ScheduledTask": {
     "TaskName": "AzureSync",
     "IntervalMinutes": 30,
-    "RunAsUser": "SYSTEM"
+    "RunAsUser": "SYSTEM",
+    "LogPath": "\\logs\task.log"
   }
 }
