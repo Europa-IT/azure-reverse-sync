@@ -81,12 +81,16 @@ $ErrorActionPreference = 'Stop'
 if ($Force) { $ConfirmPreference = 'None' }
 
 # ── Load shared module (provides Write-TaskLog) ──────────────────────────────
+# Plain Import-Module (no -Force): when this script is invoked from
+# Invoke-AzureSync.ps1's RegisterTask flow, the module is already loaded with
+# $script:Config populated by Get-SyncConfig. -Force would reload the module
+# and reset its state to $null, breaking file-based logging.
 $repoRoot   = Split-Path $PSScriptRoot -Parent
 $modulePath = Join-Path $repoRoot 'modules\AzureSync.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
 }
-Import-Module $modulePath -Force
+Import-Module $modulePath
 
 # ── Resolve the sync script path ─────────────────────────────────────────────
 $syncScript = Join-Path $RepoPath 'src\Invoke-AzureSync.ps1'
