@@ -19,6 +19,9 @@
 .PARAMETER SkipGroups
     Passed through to Invoke-AzureSync.ps1.
 
+.PARAMETER RegisterTask
+    Passed through to Invoke-AzureSync.ps1 
+
 .PARAMETER ConfigPath
     Passed through to Invoke-AzureSync.ps1.
 
@@ -38,6 +41,7 @@ param(
     [switch]$DryRun,
     [switch]$SkipUsers,
     [switch]$SkipGroups,
+    [switch]$RegisterTask,
     [string]$ConfigPath = (Resolve-Path ".\config\sync-config.json"),
     [switch]$SkipPrerequisites
 )
@@ -56,6 +60,7 @@ if (-not $isAdmin) {
     if ($DryRun)            { $argList += '-DryRun' }
     if ($SkipUsers)         { $argList += '-SkipUsers' }
     if ($SkipGroups)        { $argList += '-SkipGroups' }
+    if ($RegisterTask)      { $argList += '-RegisterTask' }
     if ($SkipPrerequisites) { $argList += '-SkipPrerequisites' }
     if ($ConfigPath)        { $argList += "-ConfigPath `"$ConfigPath`"" }
 
@@ -99,7 +104,7 @@ $syncArgs = @{
     DryRun        = if ($null -ne $DryRun) {$DryRun} else {$false}
     SkipUsers     = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
     SkipGroups    = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
-    RegisterTask   = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
+    RegisterTask  = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
     ConfigPath    = $ConfigPath
 }
 
