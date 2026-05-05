@@ -80,9 +80,9 @@ $ErrorActionPreference = 'Stop'
 # -WhatIf example still works.
 if ($Force) { $ConfirmPreference = 'None' }
 
-# ── Local logger ─────────────────────────────────────────────────────────────
-$ScriptRoot = Split-Path $PSScriptRoot -Parent
-$modulePath = Join-Path $scriptRoot '\modules\AzureSync.psm1'
+# ── Load shared module (provides Write-TaskLog) ──────────────────────────────
+$repoRoot   = Split-Path $PSScriptRoot -Parent
+$modulePath = Join-Path $repoRoot 'modules\AzureSync.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
 }

@@ -38,6 +38,11 @@
     "TaskName": "AzureSync",
     "IntervalMinutes": 30,
     "RunAsUser": "SYSTEM",
-    "LogPath": "\\logs\task.log"
+    "LogPath": ".\\logs\\task.log"
+  },
+
+  "Logging": {
+    "MaxSizeMb": 10,
+    "MaxFiles": 5
   }
 }

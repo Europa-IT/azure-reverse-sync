@@ -13,19 +13,76 @@ Set-StrictMode -Version Latest
 $script:DryRun = $false
 $script:Config = $null
 
-# -- Write-SyncLog ------------------------------------------------------------
-function Write-SyncLog {
-    <#
-    .SYNOPSIS
-        Writes a timestamped log entry to the console and to the log file defined in config.
-    .PARAMETER Message
-        The log message.
-    .PARAMETER Level
-        INFO (default), WARN, or ERROR.
-    #>
+# -- Get-ConfiguredLogPath (private) ------------------------------------------
+# Defensively reads $script:Config.<Section>.LogPath. Returns $null if Config
+# isn't loaded yet, the section is missing, or the LogPath property is absent.
+# StrictMode raises PropertyNotFoundException on plain '.' access to absent
+# properties, so we probe via PSObject.Properties first.
+function Get-ConfiguredLogPath {
+    param(
+        [Parameter(Mandatory)][ValidateSet('Sync','ScheduledTask')][string]$Section
+    )
+    if (-not $script:Config) { return $null }
+    if (-not $script:Config.PSObject.Properties[$Section]) { return $null }
+    $sectionObj = $script:Config.$Section
+    if (-not $sectionObj.PSObject.Properties['LogPath']) { return $null }
+    return $sectionObj.LogPath
+}
+
+# -- Get-LogRotationConfig (private) ------------------------------------------
+# Returns rotation parameters, reading from $script:Config.Logging if present,
+# falling back to sensible defaults otherwise. No config changes are required
+# for rotation to work -- it just uses the defaults.
+function Get-LogRotationConfig {
+    $rot = @{ MaxSizeMb = 10; MaxFiles = 5 }
+    if ($script:Config -and $script:Config.PSObject.Properties['Logging']) {
+        $logging = $script:Config.Logging
+        if ($logging.PSObject.Properties['MaxSizeMb']) { $rot.MaxSizeMb = [int]$logging.MaxSizeMb }
+        if ($logging.PSObject.Properties['MaxFiles'])  { $rot.MaxFiles  = [int]$logging.MaxFiles }
+    }
+    return [PSCustomObject]$rot
+}
+
+# -- Invoke-LogRotation (private) ---------------------------------------------
+# If $LogPath is larger than MaxSizeMb, rotates: log.(N-1) -> log.N, ..., log -> log.1.
+# Drops the oldest archive (log.MaxFiles) before shifting. Errors here are
+# reported to the console but never propagated -- a logging-infrastructure
+# failure must not break the calling sync run.
+function Invoke-LogRotation {
+    param(
+        [Parameter(Mandatory)][string]$LogPath
+    )
+    if (-not (Test-Path $LogPath -PathType Leaf)) { return }
+    $rot = Get-LogRotationConfig
+    if ((Get-Item $LogPath).Length -lt ($rot.MaxSizeMb * 1MB)) { return }
+
+    try {
+        # Drop the oldest archive if it already exists.
+        $oldest = "$LogPath.$($rot.MaxFiles)"
+        if (Test-Path $oldest) { Remove-Item $oldest -Force }
+
+        # Shift each archive up by one slot: log.(N-1) -> log.N, ..., log.1 -> log.2.
+        for ($i = $rot.MaxFiles - 1; $i -ge 1; $i--) {
+            $src = "$LogPath.$i"
+            $dst = "$LogPath.$($i + 1)"
+            if (Test-Path $src) { Move-Item $src $dst -Force }
+        }
+
+        # Promote the active log to log.1.
+        Move-Item $LogPath "$LogPath.1" -Force
+    } catch {
+        Write-Host "[WARN] Log rotation failed for '$LogPath': $_" -ForegroundColor Yellow
+    }
+}
+
+# -- Write-LogEntry (private) -------------------------------------------------
+# Shared core for Write-SyncLog and Write-TaskLog. Formats the line, writes to
+# console, then (if a log path is provided) rotates and appends to file.
+function Write-LogEntry {
     param(
         [Parameter(Mandatory)][string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO',
+        [string]$LogPath
     )
 
     $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
@@ -38,18 +95,40 @@ function Write-SyncLog {
         default { Write-Host $entry }
     }
 
-    if ($script:Config -and $script:Config.Sync.LogPath) {
-        $logDir = Split-Path $script:Config.Sync.LogPath -Parent
-        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-        Add-Content -Path $script:Config.Sync.LogPath -Value $entry -Encoding UTF8
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
+        $logDir = Split-Path $LogPath -Parent
+        if ($logDir -and -not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+        }
+        Invoke-LogRotation -LogPath $LogPath
+        Add-Content -Path $LogPath -Value $entry -Encoding UTF8
     }
+}
+
+# -- Write-SyncLog ------------------------------------------------------------
+function Write-SyncLog {
+    <#
+    .SYNOPSIS
+        Writes a timestamped log entry for the sync run to the console and to
+        Config.Sync.LogPath (if configured).
+    .PARAMETER Message
+        The log message.
+    .PARAMETER Level
+        INFO (default), WARN, or ERROR.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    Write-LogEntry -Message $Message -Level $Level -LogPath (Get-ConfiguredLogPath -Section 'Sync')
 }
 
 # -- Write-TaskLog ------------------------------------------------------------
 function Write-TaskLog {
     <#
     .SYNOPSIS
-        Writes a timestamped log entry to the console and to the log file defined in config.
+        Writes a timestamped log entry for task-registration events to the
+        console and to Config.ScheduledTask.LogPath (if configured).
     .PARAMETER Message
         The log message.
     .PARAMETER Level
@@ -59,22 +138,7 @@ function Write-TaskLog {
         [Parameter(Mandatory)][string]$Message,
         [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
     )
-
-    $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $prefix$Message"
-
-    switch ($Level) {
-        'WARN'  { Write-Host $entry -ForegroundColor Yellow }
-        'ERROR' { Write-Host $entry -ForegroundColor Red }
-        default { Write-Host $entry }
-    }
-
-    if ($script:Config -and $script:Config.ScheduledTask.LogPath) {
-        $logDir = Split-Path $script:Config.ScheduledTask.LogPath -Parent
-        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-        Add-Content -Path $script:Config.ScheduledTask.LogPath -Value $entry -Encoding UTF8
-    }
+    Write-LogEntry -Message $Message -Level $Level -LogPath (Get-ConfiguredLogPath -Section 'ScheduledTask')
 }
 
 # -- Get-SyncConfig -----------------------------------------------------------
