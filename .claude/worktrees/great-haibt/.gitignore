@@ -1,0 +1,22 @@
+# Claude directory
+.claude/
+
+# Secrets and credentials
+config/sync-config.json
+*.pfx
+*.p12
+
+# Kerberos keytabs — never commit, ACL to service account only
+*.keytab
+
+# Logs
+logs/*.log
+logs/*.txt
+
+# PowerShell module temp files
+*.psd1.bak
+
+# Editor
+.vscode/
+*.suo
+*.user
