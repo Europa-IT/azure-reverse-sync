@@ -106,7 +106,7 @@ $syncScriptFull = (Resolve-Path $syncScript).Path
 if ($Unregister) {
     $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if (-not $existing) {
-        Write-TaskLog "Scheduled task '$TaskName' does not exist — nothing to remove." -Level WARN
+        Write-TaskLog "Scheduled task '$TaskName' does not exist - nothing to remove." -Level WARN
         exit 0
     }
     if ($PSCmdlet.ShouldProcess($TaskName, 'Unregister scheduled task')) {
@@ -181,7 +181,7 @@ if ($RunAsUser -eq 'SYSTEM') {
     $taskParams['User']     = $RunAsUser
     $taskParams['Password'] = $plainPassword
 } else {
-    # Non-SYSTEM user without a password supplied — let Register-ScheduledTask prompt
+    # Non-SYSTEM user without a password supplied - let Register-ScheduledTask prompt
     $taskParams['User'] = $RunAsUser
 }
 
