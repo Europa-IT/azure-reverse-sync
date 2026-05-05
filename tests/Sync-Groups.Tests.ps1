@@ -18,7 +18,7 @@ BeforeAll {
 Describe 'Test-AdGroupExists' -Tag 'Unit' {
 
     It 'returns null when no AD group has a matching adminDescription' {
-        Mock Get-ADGroup { return $null }
+        Mock Get-ADGroup -ModuleName AzureSync { return $null }
         $result = Test-AdGroupExists -AzureObjectId 'no-such-oid' -Server 'dc01.test'
         $result | Should -BeNullOrEmpty
     }
@@ -28,7 +28,7 @@ Describe 'Test-AdGroupExists' -Tag 'Unit' {
             DistinguishedName = 'CN=TestGroup,OU=Groups,DC=test,DC=local'
             adminDescription  = 'azure-group-oid-123'
         }
-        Mock Get-ADGroup { return $fakeGroup }
+        Mock Get-ADGroup -ModuleName AzureSync { return $fakeGroup }
         $result = Test-AdGroupExists -AzureObjectId 'azure-group-oid-123' -Server 'dc01.test'
         $result.adminDescription | Should -Be 'azure-group-oid-123'
     }

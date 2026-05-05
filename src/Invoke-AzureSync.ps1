@@ -46,8 +46,6 @@ param(
     [switch]$RegisterTask
 )
 
-Write-Host "DEBUG: $ConfigPath"
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -110,7 +108,7 @@ function Invoke-Step {
     $path = Join-Path $scriptRoot "src\$ScriptFile"
     Write-SyncLog "-- $Name --"
     try {
-        . $path -Debug
+        . $path
     } catch {
         Write-SyncLog "Step '$Name' failed: $_" -Level ERROR
         $script:overallErrors++
