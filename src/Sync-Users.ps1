@@ -105,11 +105,14 @@ foreach ($gUser in $graphUsers) {
             $setParams = @{ Server = $adSrv; Identity = $existing.DistinguishedName }
             $changes   = @{}
 
+            # Set-ADUser parameter name -> Graph user property name. Keys are also the
+            # ADUser property names exposed by Get-ADUser when loaded via -Properties,
+            # so the same map drives both the diff and the splatted Set-ADUser call.
             $fieldMap = @{
                 DisplayName  = 'DisplayName'
                 GivenName    = 'GivenName'
                 Surname      = 'Surname'
-                Mail         = 'Mail'
+                EmailAddress = 'Mail'
                 Department   = 'Department'
                 Title        = 'JobTitle'
                 MobilePhone  = 'MobilePhone'
@@ -117,11 +120,11 @@ foreach ($gUser in $graphUsers) {
                 Company      = 'CompanyName'
             }
 
-            foreach ($adAttr in $fieldMap.Keys) {
-                $graphVal = $gUser.($fieldMap[$adAttr])
-                $adVal    = $existing.$adAttr
+            foreach ($adParam in $fieldMap.Keys) {
+                $graphVal = $gUser.($fieldMap[$adParam])
+                $adVal    = $existing.$adParam
                 if ($graphVal -and $graphVal -ne $adVal) {
-                    $changes[$adAttr] = $graphVal
+                    $changes[$adParam] = $graphVal
                 }
             }
 
@@ -129,7 +132,7 @@ foreach ($gUser in $graphUsers) {
                 if ($script:DryRun) {
                     Write-SyncLog "Would update $($gUser.UserPrincipalName): $($changes.Keys -join ', ')"
                 } else {
-                    Set-ADUser @setParams -Replace $changes
+                    Set-ADUser @setParams @changes
                     Write-SyncLog "Updated $($gUser.UserPrincipalName): $($changes.Keys -join ', ')"
                 }
                 $stats.Updated++
