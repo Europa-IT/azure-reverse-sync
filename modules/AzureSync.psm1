@@ -7,11 +7,18 @@
 #>
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 # -- Module-level state -------------------------------------------------------
 # Set by the orchestrator before dot-sourcing sub-scripts.
-$script:DryRun = $false
-$script:Config = $null
+$script:DryRun         = $false
+$script:Config         = $null
+# Per-run timestamp used to derive a unique log filename for this process.
+# Initialized lazily on first log write.
+$script:RunStamp       = $null
+# Tracks which configured log templates have already had retention pruned
+# in this session, so retention runs at most once per (process, template).
+$script:RetentionDone  = @{}
 
 # -- Get-ConfiguredLogPath (private) ------------------------------------------
 # Defensively reads $script:Config.<Section>.LogPath. Returns $null if Config
@@ -29,60 +36,86 @@ function Get-ConfiguredLogPath {
     return $sectionObj.LogPath
 }
 
-# -- Get-LogRotationConfig (private) ------------------------------------------
-# Returns rotation parameters, reading from $script:Config.Logging if present,
-# falling back to sensible defaults otherwise. No config changes are required
-# for rotation to work -- it just uses the defaults.
-function Get-LogRotationConfig {
-    $rot = @{ MaxSizeMb = 10; MaxFiles = 5 }
-    if ($script:Config -and $script:Config.PSObject.Properties['Logging']) {
-        $logging = $script:Config.Logging
-        if ($logging.PSObject.Properties['MaxSizeMb']) { $rot.MaxSizeMb = [int]$logging.MaxSizeMb }
-        if ($logging.PSObject.Properties['MaxFiles'])  { $rot.MaxFiles  = [int]$logging.MaxFiles }
+# -- Get-RunStamp (private) ---------------------------------------------------
+# ISO-ish timestamp captured once per process; sortable lexicographically.
+function Get-RunStamp {
+    if (-not $script:RunStamp) {
+        $script:RunStamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
     }
-    return [PSCustomObject]$rot
+    return $script:RunStamp
 }
 
-# -- Invoke-LogRotation (private) ---------------------------------------------
-# If $LogPath is larger than MaxSizeMb, rotates: log.(N-1) -> log.N, ..., log -> log.1.
-# Drops the oldest archive (log.MaxFiles) before shifting. Errors here are
-# reported to the console but never propagated -- a logging-infrastructure
-# failure must not break the calling sync run.
-function Invoke-LogRotation {
+# -- Resolve-RunLogPath (private) ---------------------------------------------
+# Converts a configured LogPath template to this run's filename:
+#     .\logs\sync.log  ->  .\logs\sync-2026-05-05_143052.log
+function Resolve-RunLogPath {
+    param([Parameter(Mandatory)][string]$Template)
+    $stamp = Get-RunStamp
+    $dir   = Split-Path $Template -Parent
+    $base  = [System.IO.Path]::GetFileNameWithoutExtension($Template)
+    $ext   = [System.IO.Path]::GetExtension($Template)
+    $name  = "$base-$stamp$ext"
+    if ($dir) { return (Join-Path $dir $name) }
+    return $name
+}
+
+# -- Get-LogRetentionConfig (private) -----------------------------------------
+# Reads $script:Config.Logging.MaxFiles if present; defaults to 100 (~2 days
+# of runs at the default 30-minute interval). Clamped to >= 1 so we never
+# delete the file we're about to write.
+function Get-LogRetentionConfig {
+    $cfg = @{ MaxFiles = 100 }
+    if ($script:Config -and $script:Config.PSObject.Properties['Logging']) {
+        $logging = $script:Config.Logging
+        if ($logging.PSObject.Properties['MaxFiles']) {
+            $cfg.MaxFiles = [Math]::Max(1, [int]$logging.MaxFiles)
+        }
+    }
+    return [PSCustomObject]$cfg
+}
+
+# -- Invoke-LogRetention (private) --------------------------------------------
+# Deletes per-run log files matching the template (e.g. sync-*.log in the same
+# directory) beyond the MaxFiles most recent. Sort order is by filename -- the
+# yyyy-MM-dd_HHmmss stamp sorts lexicographically the same as chronologically.
+# Errors here are reported but never propagated.
+function Invoke-LogRetention {
     param(
-        [Parameter(Mandatory)][string]$LogPath
+        [Parameter(Mandatory)][string]$Template
     )
-    if (-not (Test-Path $LogPath -PathType Leaf)) { return }
-    $rot = Get-LogRotationConfig
-    if ((Get-Item $LogPath).Length -lt ($rot.MaxSizeMb * 1MB)) { return }
+    $dir = Split-Path $Template -Parent
+    if (-not $dir) { $dir = '.' }
+    if (-not (Test-Path $dir)) { return }
+
+    $base    = [System.IO.Path]::GetFileNameWithoutExtension($Template)
+    $ext     = [System.IO.Path]::GetExtension($Template)
+    $pattern = "$base-*$ext"
 
     try {
-        # Drop the oldest archive if it already exists.
-        $oldest = "$LogPath.$($rot.MaxFiles)"
-        if (Test-Path $oldest) { Remove-Item $oldest -Force }
-
-        # Shift each archive up by one slot: log.(N-1) -> log.N, ..., log.1 -> log.2.
-        for ($i = $rot.MaxFiles - 1; $i -ge 1; $i--) {
-            $src = "$LogPath.$i"
-            $dst = "$LogPath.$($i + 1)"
-            if (Test-Path $src) { Move-Item $src $dst -Force }
+        $cfg = Get-LogRetentionConfig
+        $existing = @(
+            Get-ChildItem -Path $dir -Filter $pattern -File -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending
+        )
+        if ($existing.Count -le $cfg.MaxFiles) { return }
+        $existing | Select-Object -Skip $cfg.MaxFiles | ForEach-Object {
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
         }
-
-        # Promote the active log to log.1.
-        Move-Item $LogPath "$LogPath.1" -Force
     } catch {
-        Write-Host "[WARN] Log rotation failed for '$LogPath': $_" -ForegroundColor Yellow
+        Write-Host "[WARN] Log retention failed for '$Template': $_" -ForegroundColor Yellow
     }
 }
 
 # -- Write-LogEntry (private) -------------------------------------------------
 # Shared core for Write-SyncLog and Write-TaskLog. Formats the line, writes to
-# console, then (if a log path is provided) rotates and appends to file.
+# console, then -- if a log template is configured -- resolves the per-run
+# filename, appends the entry, and prunes old run logs once per template per
+# session.
 function Write-LogEntry {
     param(
         [Parameter(Mandatory)][string]$Message,
         [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO',
-        [string]$LogPath
+        [string]$LogPath        # configured template; per-run filename derived from this
     )
 
     $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
@@ -96,12 +129,17 @@ function Write-LogEntry {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
-        $logDir = Split-Path $LogPath -Parent
+        $runPath = Resolve-RunLogPath -Template $LogPath
+        $logDir = Split-Path $runPath -Parent
         if ($logDir -and -not (Test-Path $logDir)) {
             New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
-        Invoke-LogRotation -LogPath $LogPath
-        Add-Content -Path $LogPath -Value $entry -Encoding UTF8
+        Add-Content -Path $runPath -Value $entry -Encoding UTF8
+
+        if (-not $script:RetentionDone[$LogPath]) {
+            Invoke-LogRetention -Template $LogPath
+            $script:RetentionDone[$LogPath] = $true
+        }
     }
 }
 

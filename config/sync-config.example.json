@@ -42,7 +42,6 @@
   },
 
   "Logging": {
-    "MaxSizeMb": 10,
-    "MaxFiles": 5
+    "MaxFiles": 100
   }
 }
