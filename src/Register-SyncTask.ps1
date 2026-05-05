@@ -73,6 +73,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# When -Force is passed, treat it as an explicit "do it" intent and suppress
+# any Confirm prompts. This matches the convention used by built-in cmdlets
+# (Remove-Item -Force, Stop-Process -Force, etc.). -WhatIf is unaffected --
+# it flips $WhatIfPreference, not $ConfirmPreference -- so the documented
+# -WhatIf example still works.
+if ($Force) { $ConfirmPreference = 'None' }
+
 # ── Local logger ─────────────────────────────────────────────────────────────
 function Write-TaskLog {
     param(
@@ -117,6 +124,8 @@ if ($Unregister) {
             Write-TaskLog "Failed to remove scheduled task '$TaskName': $_" -Level ERROR
             exit 1
         }
+    } else {
+        Write-TaskLog "Unregister skipped: ShouldProcess returned false (-WhatIf in effect, or Confirm prompt was declined)." -Level WARN
     }
     exit 0
 }
@@ -200,4 +209,8 @@ if ($PSCmdlet.ShouldProcess($TaskName, 'Register scheduled task')) {
         Write-TaskLog "Failed to register scheduled task '$TaskName': $_" -Level ERROR
         exit 1
     }
+} else {
+    Write-TaskLog "Register skipped: ShouldProcess returned false (-WhatIf in effect, or Confirm prompt was declined)." -Level WARN
 }
+
+exit 0
