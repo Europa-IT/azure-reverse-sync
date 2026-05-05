@@ -20,7 +20,8 @@
     Passed through to Invoke-AzureSync.ps1.
 
 .PARAMETER RegisterTask
-    Passed through to Invoke-AzureSync.ps1 
+    Passed through to Invoke-AzureSync.ps1. Registers the recurring scheduled
+    task using the ScheduledTask section of sync-config.json, then exits.
 
 .PARAMETER ConfigPath
     Passed through to Invoke-AzureSync.ps1.
@@ -42,7 +43,7 @@ param(
     [switch]$SkipUsers,
     [switch]$SkipGroups,
     [switch]$RegisterTask,
-    [string]$ConfigPath = (Resolve-Path ".\config\sync-config.json"),
+    [string]$ConfigPath = (Join-Path $PSScriptRoot 'config\sync-config.json'),
     [switch]$SkipPrerequisites
 )
 
@@ -64,9 +65,11 @@ if (-not $isAdmin) {
     if ($SkipPrerequisites) { $argList += '-SkipPrerequisites' }
     if ($ConfigPath)        { $argList += "-ConfigPath `"$ConfigPath`"" }
 
-    # This probably doesn't work
-    Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
-    exit $LASTEXITCODE
+    # -PassThru + .ExitCode is the only reliable way to bring the elevated
+    # process's exit code back to the parent. Start-Process is a cmdlet, not
+    # a native command, so it never sets $LASTEXITCODE.
+    $proc = Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait -PassThru
+    exit $proc.ExitCode
 }
 
 # ── 2. Set execution policy for this session ─────────────────────────────────
@@ -99,17 +102,11 @@ if (-not $SkipPrerequisites) {
 # ── 5. Run the sync ───────────────────────────────────────────────────────────
 Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
-Write-Host "DryRun: $DryRun, SkipUsers: $SkipUsers, SkipGroups: $SkipGroups, ConfigPath: $ConfigPath"
-$syncArgs = @{
-    DryRun        = if ($null -ne $DryRun) {$DryRun} else {$false}
-    SkipUsers     = if ($null -ne $SkipUsers) {$SkipUsers} else {$false}
-    SkipGroups    = if ($null -ne $SkipGroups) {$SkipGroups} else {$false}
-    RegisterTask  = if ($null -ne $RegisterTask) {$RegisterTask} else {$false}
-    ConfigPath    = $ConfigPath
-}
-
-# Debug
-$syncArgs
+$syncArgs = @{ ConfigPath = $ConfigPath }
+if ($DryRun)       { $syncArgs.DryRun       = $true }
+if ($SkipUsers)    { $syncArgs.SkipUsers    = $true }
+if ($SkipGroups)   { $syncArgs.SkipGroups   = $true }
+if ($RegisterTask) { $syncArgs.RegisterTask = $true }
 
 & $syncScript @syncArgs
 Read-Host "Completed with exit code $LASTEXITCODE, press Enter to exit"
