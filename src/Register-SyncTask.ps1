@@ -81,18 +81,13 @@ $ErrorActionPreference = 'Stop'
 if ($Force) { $ConfirmPreference = 'None' }
 
 # ── Local logger ─────────────────────────────────────────────────────────────
-if ( -not (Get-Module AzureSync -ErrorAction SilentlyContinue) ){
-
-    $ScriptRoot = Split-Path $PSScriptRoot -Parent
-    $modulePath = Join-Path $scriptRoot '..\modules\AzureSync.psm1'
-    if (-not (Test-Path $modulePath)) {
-        throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
-    }
-    Import-Module $modulePath -Force
-
-} else {
-    Write-Host "DEBUG: Module is seen as imported."
+$ScriptRoot = Split-Path $PSScriptRoot -Parent
+$modulePath = Join-Path $scriptRoot '..\modules\AzureSync.psm1'
+if (-not (Test-Path $modulePath)) {
+    throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
 }
+Import-Module $modulePath -Force
+
 
 
 # ── Resolve the sync script path ─────────────────────────────────────────────
