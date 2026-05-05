@@ -166,9 +166,14 @@ function Test-AdUserExists {
     )
 
     try {
+        # Load every property Sync-Users.ps1 diffs against. Without these the diff loop
+        # reads $null under StrictMode (PropertyNotFoundException) and the per-user
+        # try/catch silently increments $stats.Errors.
         $user = Get-ADUser -Filter "msDS-cloudExtensionAttribute1 -eq '$AzureObjectId'" `
                            -Server $Server `
-                           -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled `
+                           -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled,
+                                       DisplayName, GivenName, Surname, EmailAddress,
+                                       Department, Title, MobilePhone, Office, Company `
                            -ErrorAction SilentlyContinue
         return $user
     } catch {
