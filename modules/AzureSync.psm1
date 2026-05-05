@@ -45,6 +45,38 @@ function Write-SyncLog {
     }
 }
 
+# -- Write-TaskLog ------------------------------------------------------------
+function Write-TaskLog {
+    <#
+    .SYNOPSIS
+        Writes a timestamped log entry to the console and to the log file defined in config.
+    .PARAMETER Message
+        The log message.
+    .PARAMETER Level
+        INFO (default), WARN, or ERROR.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+
+    $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $entry = "[$timestamp] [$Level] $prefix$Message"
+
+    switch ($Level) {
+        'WARN'  { Write-Host $entry -ForegroundColor Yellow }
+        'ERROR' { Write-Host $entry -ForegroundColor Red }
+        default { Write-Host $entry }
+    }
+
+    if ($script:Config -and $script:Config.ScheduledTask.LogPath) {
+        $logDir = Split-Path $script:Config.ScheduledTask.LogPath -Parent
+        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        Add-Content -Path $script:Config.ScheduledTask.LogPath -Value $entry -Encoding UTF8
+    }
+}
+
 # -- Get-SyncConfig -----------------------------------------------------------
 function Get-SyncConfig {
     <#
@@ -221,6 +253,7 @@ function New-SecureRandomPassword {
 
 Export-ModuleMember -Function @(
     'Write-SyncLog',
+    'Write-TaskLog',
     'Get-SyncConfig',
     'ConvertTo-AdAttributes',
     'Test-AdUserExists',
