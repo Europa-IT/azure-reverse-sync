@@ -21,19 +21,24 @@ $script:RunStamp       = $null
 $script:RetentionDone  = @{}
 
 # -- Get-ConfiguredLogPath (private) ------------------------------------------
-# Defensively reads $script:Config.<Section>.LogPath. Returns $null if Config
-# isn't loaded yet, the section is missing, or the LogPath property is absent.
-# StrictMode raises PropertyNotFoundException on plain '.' access to absent
-# properties, so we probe via PSObject.Properties first.
+# Builds the per-section log template from $script:Config.Logging.LogPath
+# (a directory) plus the section name, e.g.:
+#     Logging.LogPath = '.\logs', Section = 'Sync'  ->  '.\logs\Sync.log'
+# Resolve-RunLogPath then stamps that into the per-run filename.
+# Returns $null if Config isn't loaded, the Logging section is missing, or
+# LogPath is empty. StrictMode raises PropertyNotFoundException on plain '.'
+# access to absent properties, so we probe via PSObject.Properties first.
 function Get-ConfiguredLogPath {
     param(
         [Parameter(Mandatory)][ValidateSet('Sync','ScheduledTask')][string]$Section
     )
     if (-not $script:Config) { return $null }
-    if (-not $script:Config.PSObject.Properties[$Section]) { return $null }
-    $sectionObj = $script:Config.$Section
-    if (-not $sectionObj.PSObject.Properties['LogPath']) { return $null }
-    return $sectionObj.LogPath
+    if (-not $script:Config.PSObject.Properties['Logging']) { return $null }
+    $logging = $script:Config.Logging
+    if (-not $logging.PSObject.Properties['LogPath']) { return $null }
+    $dir = $logging.LogPath
+    if ([string]::IsNullOrWhiteSpace($dir)) { return $null }
+    return (Join-Path $dir ("{0}.log" -f $Section))
 }
 
 # -- Get-RunStamp (private) ---------------------------------------------------
@@ -134,7 +139,6 @@ function Write-LogEntry {
         if ($logDir -and -not (Test-Path $logDir)) {
             New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
-        # TODO resolve bug here, it is silently failing
         try {
             Add-Content -Path $runPath -Value $entry -Encoding UTF8 -ErrorAction Stop
         } catch {
@@ -153,7 +157,7 @@ function Write-SyncLog {
     <#
     .SYNOPSIS
         Writes a timestamped log entry for the sync run to the console and to
-        Config.Sync.LogPath (if configured).
+        a per-run file under Config.Logging.LogPath (if configured).
     .PARAMETER Message
         The log message.
     .PARAMETER Level
@@ -171,7 +175,7 @@ function Write-TaskLog {
     <#
     .SYNOPSIS
         Writes a timestamped log entry for task-registration events to the
-        console and to Config.ScheduledTask.LogPath (if configured).
+        console and to a per-run file under Config.Logging.LogPath (if configured).
     .PARAMETER Message
         The log message.
     .PARAMETER Level
