@@ -7,25 +7,120 @@
 #>
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 # -- Module-level state -------------------------------------------------------
 # Set by the orchestrator before dot-sourcing sub-scripts.
-$script:DryRun = $false
-$script:Config = $null
+$script:DryRun         = $false
+$script:Config         = $null
+# Per-run timestamp used to derive a unique log filename for this process.
+# Initialized lazily on first log write.
+$script:RunStamp       = $null
+# Tracks which configured log templates have already had retention pruned
+# in this session, so retention runs at most once per (process, template).
+$script:RetentionDone  = @{}
 
-# -- Write-SyncLog ------------------------------------------------------------
-function Write-SyncLog {
-    <#
-    .SYNOPSIS
-        Writes a timestamped log entry to the console and to the log file defined in config.
-    .PARAMETER Message
-        The log message.
-    .PARAMETER Level
-        INFO (default), WARN, or ERROR.
-    #>
+# -- Get-ConfiguredLogPath (private) ------------------------------------------
+# Builds the per-section log template from $script:Config.Logging.LogPath
+# (a directory) plus the section name, e.g.:
+#     Logging.LogPath = '.\logs', Section = 'Sync'  ->  '.\logs\Sync.log'
+# Resolve-RunLogPath then stamps that into the per-run filename.
+# Returns $null if Config isn't loaded, the Logging section is missing, or
+# LogPath is empty. StrictMode raises PropertyNotFoundException on plain '.'
+# access to absent properties, so we probe via PSObject.Properties first.
+function Get-ConfiguredLogPath {
+    param(
+        [Parameter(Mandatory)][ValidateSet('Sync','ScheduledTask')][string]$Section
+    )
+    if (-not $script:Config) { return $null }
+    if (-not $script:Config.PSObject.Properties['Logging']) { return $null }
+    $logging = $script:Config.Logging
+    if (-not $logging.PSObject.Properties['LogPath']) { return $null }
+    $dir = $logging.LogPath
+    if ([string]::IsNullOrWhiteSpace($dir)) { return $null }
+    return (Join-Path $dir ("{0}.log" -f $Section))
+}
+
+# -- Get-RunStamp (private) ---------------------------------------------------
+# ISO-ish timestamp captured once per process; sortable lexicographically.
+function Get-RunStamp {
+    if (-not $script:RunStamp) {
+        $script:RunStamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
+    }
+    return $script:RunStamp
+}
+
+# -- Resolve-RunLogPath (private) ---------------------------------------------
+# Converts a configured LogPath template to this run's filename:
+#     .\logs\sync.log  ->  .\logs\sync-2026-05-05_143052.log
+function Resolve-RunLogPath {
+    param([Parameter(Mandatory)][string]$Template)
+    $stamp = Get-RunStamp
+    $dir   = Split-Path $Template -Parent
+    $base  = [System.IO.Path]::GetFileNameWithoutExtension($Template)
+    $ext   = [System.IO.Path]::GetExtension($Template)
+    $name  = "$base-$stamp$ext"
+    if ($dir) { return (Join-Path $dir $name) }
+    return $name
+}
+
+# -- Get-LogRetentionConfig (private) -----------------------------------------
+# Reads $script:Config.Logging.MaxFiles if present; defaults to 100 (~2 days
+# of runs at the default 30-minute interval). Clamped to >= 1 so we never
+# delete the file we're about to write.
+function Get-LogRetentionConfig {
+    $cfg = @{ MaxFiles = 100 }
+    if ($script:Config -and $script:Config.PSObject.Properties['Logging']) {
+        $logging = $script:Config.Logging
+        if ($logging.PSObject.Properties['MaxFiles']) {
+            $cfg.MaxFiles = [Math]::Max(1, [int]$logging.MaxFiles)
+        }
+    }
+    return [PSCustomObject]$cfg
+}
+
+# -- Invoke-LogRetention (private) --------------------------------------------
+# Deletes per-run log files matching the template (e.g. sync-*.log in the same
+# directory) beyond the MaxFiles most recent. Sort order is by filename -- the
+# yyyy-MM-dd_HHmmss stamp sorts lexicographically the same as chronologically.
+# Errors here are reported but never propagated.
+function Invoke-LogRetention {
+    param(
+        [Parameter(Mandatory)][string]$Template
+    )
+    $dir = Split-Path $Template -Parent
+    if (-not $dir) { $dir = '.' }
+    if (-not (Test-Path $dir)) { return }
+
+    $base    = [System.IO.Path]::GetFileNameWithoutExtension($Template)
+    $ext     = [System.IO.Path]::GetExtension($Template)
+    $pattern = "$base-*$ext"
+
+    try {
+        $cfg = Get-LogRetentionConfig
+        $existing = @(
+            Get-ChildItem -Path $dir -Filter $pattern -File -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending
+        )
+        if ($existing.Count -le $cfg.MaxFiles) { return }
+        $existing | Select-Object -Skip $cfg.MaxFiles | ForEach-Object {
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-Host "[WARN] Log retention failed for '$Template': $_" -ForegroundColor Yellow
+    }
+}
+
+# -- Write-LogEntry (private) -------------------------------------------------
+# Shared core for Write-SyncLog and Write-TaskLog. Formats the line, writes to
+# console, then -- if a log template is configured -- resolves the per-run
+# filename, appends the entry, and prunes old run logs once per template per
+# session.
+function Write-LogEntry {
     param(
         [Parameter(Mandatory)][string]$Message,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO',
+        [string]$LogPath        # configured template; per-run filename derived from this
     )
 
     $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
@@ -38,18 +133,49 @@ function Write-SyncLog {
         default { Write-Host $entry }
     }
 
-    if ($script:Config -and $script:Config.Sync.LogPath) {
-        $logDir = Split-Path $script:Config.Sync.LogPath -Parent
-        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-        Add-Content -Path $script:Config.Sync.LogPath -Value $entry -Encoding UTF8
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
+        $runPath = Resolve-RunLogPath -Template $LogPath
+        $logDir = Split-Path $runPath -Parent
+        if ($logDir -and -not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+        }
+        try {
+            Add-Content -Path $runPath -Value $entry -Encoding UTF8 -ErrorAction Stop
+        } catch {
+            Write-Host ("Error: {0}" -f $_.Exception.Message)
+        }
+
+        if (-not $script:RetentionDone[$LogPath]) {
+            Invoke-LogRetention -Template $LogPath
+            $script:RetentionDone[$LogPath] = $true
+        }
     }
+}
+
+# -- Write-SyncLog ------------------------------------------------------------
+function Write-SyncLog {
+    <#
+    .SYNOPSIS
+        Writes a timestamped log entry for the sync run to the console and to
+        a per-run file under Config.Logging.LogPath (if configured).
+    .PARAMETER Message
+        The log message.
+    .PARAMETER Level
+        INFO (default), WARN, or ERROR.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    Write-LogEntry -Message $Message -Level $Level -LogPath (Get-ConfiguredLogPath -Section 'Sync')
 }
 
 # -- Write-TaskLog ------------------------------------------------------------
 function Write-TaskLog {
     <#
     .SYNOPSIS
-        Writes a timestamped log entry to the console and to the log file defined in config.
+        Writes a timestamped log entry for task-registration events to the
+        console and to a per-run file under Config.Logging.LogPath (if configured).
     .PARAMETER Message
         The log message.
     .PARAMETER Level
@@ -59,22 +185,7 @@ function Write-TaskLog {
         [Parameter(Mandatory)][string]$Message,
         [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO'
     )
-
-    $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $prefix$Message"
-
-    switch ($Level) {
-        'WARN'  { Write-Host $entry -ForegroundColor Yellow }
-        'ERROR' { Write-Host $entry -ForegroundColor Red }
-        default { Write-Host $entry }
-    }
-
-    if ($script:Config -and $script:Config.ScheduledTask.LogPath) {
-        $logDir = Split-Path $script:Config.ScheduledTask.LogPath -Parent
-        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-        Add-Content -Path $script:Config.ScheduledTask.LogPath -Value $entry -Encoding UTF8
-    }
+    Write-LogEntry -Message $Message -Level $Level -LogPath (Get-ConfiguredLogPath -Section 'ScheduledTask')
 }
 
 # -- Get-SyncConfig -----------------------------------------------------------
@@ -113,6 +224,21 @@ function Get-SyncConfig {
         if ([string]::IsNullOrWhiteSpace($val) -or $val -like '<*>') {
             throw "Missing required config value: $($r.Label)"
         }
+    }
+
+    # Anchor Logging.LogPath to the repo root if it's relative, so per-run
+    # files land in the repo's logs\ folder regardless of where the
+    # orchestrator was invoked from. Most common cause of drift: self-
+    # elevation via Start-Process -Verb RunAs, where the elevated process
+    # doesn't inherit the parent shell's cwd and lands in C:\Windows\System32.
+    # Same hazard applies to remote sessions and scheduled tasks whose
+    # action lacks -WorkingDirectory. Absolute paths pass through unchanged.
+    if ($config.PSObject.Properties['Logging'] -and
+        $config.Logging.PSObject.Properties['LogPath'] -and
+        -not [string]::IsNullOrWhiteSpace($config.Logging.LogPath) -and
+        -not [System.IO.Path]::IsPathRooted($config.Logging.LogPath)) {
+        $repoRoot = Split-Path $PSScriptRoot -Parent
+        $config.Logging.LogPath = Join-Path $repoRoot $config.Logging.LogPath
     }
 
     $script:Config = $config

@@ -29,7 +29,6 @@
   "Sync": {
     "DryRun": false,
     "DisableDeletedUsers": true,
-    "LogPath": ".\\logs\\sync.log",
     "LicensedUsersOnly": false,
     "FilterGroupId": ""
   },
@@ -37,7 +36,11 @@
   "ScheduledTask": {
     "TaskName": "AzureSync",
     "IntervalMinutes": 30,
-    "RunAsUser": "SYSTEM",
-    "LogPath": "\\logs\task.log"
+    "RunAsUser": "SYSTEM"
+  },
+
+  "Logging": {
+    "MaxFiles": 100,
+    "LogPath": ".\\logs"
   }
 }
