@@ -150,6 +150,8 @@ function Write-LogEntry {
             Invoke-LogRetention -Template $LogPath
             $script:RetentionDone[$LogPath] = $true
         }
+    } else {
+        Write-Host "DEBUG: LogPath = $LogPath"
     }
 }
 
