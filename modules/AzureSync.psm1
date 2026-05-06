@@ -123,6 +123,7 @@ function Write-LogEntry {
         [string]$LogPath        # configured template; per-run filename derived from this
     )
 
+    Write-Host "[DEBUG] LogPath='$LogPath'" -ForegroundColor Cyan
     $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $entry = "[$timestamp] [$Level] $prefix$Message"
