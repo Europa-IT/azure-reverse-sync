@@ -58,6 +58,13 @@ if ($filterGroupId) {
 $graphUsers = @($graphUsers) | Where-Object { $_.UserPrincipalName -notlike '*#EXT#*' }
 Write-SyncLog "Users to sync: $(@($graphUsers).Count)"
 
+# Publish the set of Azure user IDs that passed the sync filter so
+# Sync-Groups.ps1 can distinguish "this group member was filtered out
+# of the sync intentionally" from "this is a real on-prem AD gap."
+# Both scripts share the orchestrator's $script: scope via dot-sourcing.
+$script:SyncableUserIds = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($u in $graphUsers) { [void]$script:SyncableUserIds.Add([string]$u.Id) }
+
 $stats = @{ Created = 0; Updated = 0; Skipped = 0; Errors = 0 }
 
 foreach ($gUser in $graphUsers) {
