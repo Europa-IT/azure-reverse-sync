@@ -123,7 +123,6 @@ function Write-LogEntry {
         [string]$LogPath        # configured template; per-run filename derived from this
     )
 
-    Write-Host "[DEBUG] LogPath='$LogPath'" -ForegroundColor Cyan
     $prefix = if ($script:DryRun) { '[DRYRUN] ' } else { '' }
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $entry = "[$timestamp] [$Level] $prefix$Message"
@@ -150,8 +149,6 @@ function Write-LogEntry {
             Invoke-LogRetention -Template $LogPath
             $script:RetentionDone[$LogPath] = $true
         }
-    } else {
-        Write-Host "DEBUG 2: LogPath = $LogPath"
     }
 }
 
@@ -227,6 +224,21 @@ function Get-SyncConfig {
         if ([string]::IsNullOrWhiteSpace($val) -or $val -like '<*>') {
             throw "Missing required config value: $($r.Label)"
         }
+    }
+
+    # Anchor Logging.LogPath to the repo root if it's relative, so per-run
+    # files land in the repo's logs\ folder regardless of where the
+    # orchestrator was invoked from. Most common cause of drift: self-
+    # elevation via Start-Process -Verb RunAs, where the elevated process
+    # doesn't inherit the parent shell's cwd and lands in C:\Windows\System32.
+    # Same hazard applies to remote sessions and scheduled tasks whose
+    # action lacks -WorkingDirectory. Absolute paths pass through unchanged.
+    if ($config.PSObject.Properties['Logging'] -and
+        $config.Logging.PSObject.Properties['LogPath'] -and
+        -not [string]::IsNullOrWhiteSpace($config.Logging.LogPath) -and
+        -not [System.IO.Path]::IsPathRooted($config.Logging.LogPath)) {
+        $repoRoot = Split-Path $PSScriptRoot -Parent
+        $config.Logging.LogPath = Join-Path $repoRoot $config.Logging.LogPath
     }
 
     $script:Config = $config
