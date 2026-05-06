@@ -135,7 +135,11 @@ function Write-LogEntry {
             New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
         # TODO resolve bug here, it is silently failing
-        Add-Content -Path $runPath -Value $entry -Encoding UTF8
+        try {
+            Add-Content -Path $runPath -Value $entry -Encoding UTF8 -ErrorAction Stop
+        } catch {
+            Write-Host ("Error: {0}" -f $_.Exception.Message)
+        }
 
         if (-not $script:RetentionDone[$LogPath]) {
             Invoke-LogRetention -Template $LogPath
