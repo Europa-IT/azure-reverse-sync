@@ -151,7 +151,7 @@ function Write-LogEntry {
             $script:RetentionDone[$LogPath] = $true
         }
     } else {
-        Write-Host "DEBUG: LogPath = $LogPath"
+        Write-Host "DEBUG 2: LogPath = $LogPath"
     }
 }
 
