@@ -29,6 +29,13 @@
 .PARAMETER SkipPrerequisites
     Skip the Install-Prerequisites.ps1 step. Use after the first successful run.
 
+.PARAMETER Debug
+    Standard PowerShell common parameter (enabled via [CmdletBinding]).
+    Passed through to Invoke-AzureSync.ps1, where it enables a per-run
+    Start-Transcript that captures stdout/stderr/errors to
+    logs\transcript-<stamp>.log. Useful for diagnosing failures where
+    console output would otherwise be lost (scheduled-task spawns, etc.).
+
 .EXAMPLE
     # First-time setup and dry run
     .\Start-AzureSync.ps1 -DryRun
@@ -36,8 +43,13 @@
 .EXAMPLE
     # Normal sync, prerequisites already installed
     .\Start-AzureSync.ps1 -SkipPrerequisites
+
+.EXAMPLE
+    # Capture a forensic transcript for troubleshooting
+    .\Start-AzureSync.ps1 -DryRun -Debug
 #>
 
+[CmdletBinding()]
 param(
     [switch]$DryRun,
     [switch]$SkipUsers,
@@ -58,12 +70,13 @@ if (-not $isAdmin) {
 
     # Rebuild the argument list to pass through to the elevated process
     $argList = @("-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-File", "`"$PSCommandPath`"")
-    if ($DryRun)            { $argList += '-DryRun' }
-    if ($SkipUsers)         { $argList += '-SkipUsers' }
-    if ($SkipGroups)        { $argList += '-SkipGroups' }
-    if ($RegisterTask)      { $argList += '-RegisterTask' }
-    if ($SkipPrerequisites) { $argList += '-SkipPrerequisites' }
-    if ($ConfigPath)        { $argList += "-ConfigPath `"$ConfigPath`"" }
+    if ($DryRun)                          { $argList += '-DryRun' }
+    if ($SkipUsers)                       { $argList += '-SkipUsers' }
+    if ($SkipGroups)                      { $argList += '-SkipGroups' }
+    if ($RegisterTask)                    { $argList += '-RegisterTask' }
+    if ($SkipPrerequisites)               { $argList += '-SkipPrerequisites' }
+    if ($PSBoundParameters['Debug'])      { $argList += '-Debug' }
+    if ($ConfigPath)                      { $argList += "-ConfigPath `"$ConfigPath`"" }
 
     # -PassThru + .ExitCode is the only reliable way to bring the elevated
     # process's exit code back to the parent. Start-Process is a cmdlet, not
@@ -103,10 +116,11 @@ if (-not $SkipPrerequisites) {
 Write-Host "`n=== Starting sync ===" -ForegroundColor Cyan
 
 $syncArgs = @{ ConfigPath = $ConfigPath }
-if ($DryRun)       { $syncArgs.DryRun       = $true }
-if ($SkipUsers)    { $syncArgs.SkipUsers    = $true }
-if ($SkipGroups)   { $syncArgs.SkipGroups   = $true }
-if ($RegisterTask) { $syncArgs.RegisterTask = $true }
+if ($DryRun)                     { $syncArgs.DryRun       = $true }
+if ($SkipUsers)                  { $syncArgs.SkipUsers    = $true }
+if ($SkipGroups)                 { $syncArgs.SkipGroups   = $true }
+if ($RegisterTask)               { $syncArgs.RegisterTask = $true }
+if ($PSBoundParameters['Debug']) { $syncArgs.Debug        = $true }
 
 & $syncScript @syncArgs
 Read-Host "Completed with exit code $LASTEXITCODE, press Enter to exit"
