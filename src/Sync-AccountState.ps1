@@ -43,6 +43,15 @@ foreach ($adUser in $managedAdUsers) {
         if (-not $azureUserMap.ContainsKey($azureOid)) {
             # -- User removed from Azure AD -----------------------------------
             if ($cfg.Sync.DisableDeletedUsers) {
+                # Skip if already disabled and already in the DisabledOU subtree --
+                # the disable+move was done on a previous run. Without this guard,
+                # every sync re-issues Disable-ADAccount and Move-ADObject (no-op
+                # or error at the AD level depending on Move semantics) and emits
+                # a misleading WARN line plus stats delta for each deleted user.
+                if (-not $adUser.Enabled -and $adUser.DistinguishedName -like "*,$disabledOU") {
+                    $stats.Skipped++
+                    continue
+                }
                 if ($script:DryRun) {
                     Write-SyncLog "Would disable+move deleted user: $($adUser.UserPrincipalName)"
                 } else {

@@ -100,7 +100,15 @@ foreach ($azGroup in $azureGroups) {
                     $stats.MembersAdded++
                     $ActuallyUpdated = $true
                 } else {
-                    Write-SyncLog "Skipping member Azure OID $azMemberId - not yet synced to on-prem AD" -Level WARN
+                    # Only warn if this member would have been synced by Sync-Users.ps1.
+                    # Members filtered out by config (unlicensed when LicensedUsersOnly,
+                    # outside FilterGroupId, guests) are intentionally absent from on-prem
+                    # AD; warning about each one in every group is noise. Falls back to
+                    # warning when SyncableUserIds isn't published (e.g. -SkipUsers).
+                    $hasSyncable = Get-Variable -Scope Script -Name SyncableUserIds -ErrorAction SilentlyContinue
+                    if (-not $hasSyncable -or $hasSyncable.Value.Contains([string]$azMemberId)) {
+                        Write-SyncLog "Skipping member Azure OID $azMemberId - not yet synced to on-prem AD" -Level WARN
+                    }
                 }
             }
         }
