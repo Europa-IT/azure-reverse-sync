@@ -179,7 +179,7 @@ $taskParams = @{
     Trigger   = $trigger
     Settings  = $settings
     RunLevel  = 'Highest'
-    Force     = $Force.IsPresent
+    Force     = [bool]$Force
 }
 
 # ── Set run-as identity ───────────────────────────────────────────────────────

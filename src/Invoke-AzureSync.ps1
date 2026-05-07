@@ -95,8 +95,15 @@ $script:Config = Get-SyncConfig @cfgArgs
 
 # Resolve DryRun: -DryRun switch takes precedence; config Sync.DryRun is a fallback.
 # Set $script:DryRun before any Write-SyncLog calls so the [DRYRUN] prefix is accurate.
-$script:DryRun = $DryRun.IsPresent -or ($script:Config.Sync.DryRun -eq $true)
-if ($script:Config.Sync.DryRun -eq $true -and -not $DryRun.IsPresent) {
+#
+# Use [bool]$DryRun rather than $DryRun.IsPresent: under Set-StrictMode -Version
+# Latest, in some hosts (notably scheduled tasks running as SYSTEM with -File)
+# the bound parameter surfaces as a value that lacks the .IsPresent property,
+# producing PropertyNotFoundException. The [bool] cast goes through the
+# SwitchParameter -> bool implicit conversion and is strict-mode-safe in every
+# host we've seen.
+$script:DryRun = [bool]$DryRun -or ($script:Config.Sync.DryRun -eq $true)
+if ($script:Config.Sync.DryRun -eq $true -and -not [bool]$DryRun) {
     Write-SyncLog "DryRun enabled via config file (Sync.DryRun = true)." -Level WARN
 }
 
