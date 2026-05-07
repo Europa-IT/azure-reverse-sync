@@ -46,6 +46,32 @@ param(
     [switch]$RegisterTask
 )
 
+# -- Diagnostic transcript ----------------------------------------------------
+# Captures stdout, stderr, Write-Host output, and uncaught errors to a per-run
+# file BEFORE any other code can fail. Anchored to the script's directory (not
+# cwd) so it works under the scheduled-task spawn even if -WorkingDirectory
+# isn't honored. This is the safety net for diagnosing scheduled-task failures
+# where Write-Host output to the spawned console is otherwise lost.
+#
+# If the primary path can't be written (e.g. permission issue in <repo>\logs\
+# under SYSTEM), fall back to %TEMP%\azuresync-emergency.log so the failure
+# itself is recorded somewhere.
+try {
+    $transcriptDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'logs'
+    if (-not (Test-Path $transcriptDir)) {
+        New-Item -ItemType Directory -Path $transcriptDir -Force | Out-Null
+    }
+    $transcriptPath = Join-Path $transcriptDir ("transcript-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd_HHmmss'))
+    Start-Transcript -Path $transcriptPath -Force -ErrorAction Stop | Out-Null
+} catch {
+    try {
+        $emergencyLog = Join-Path $env:TEMP 'azuresync-emergency.log'
+        ("{0}`tFailed to start transcript at '{1}': {2}" -f
+            (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $transcriptPath, $_.Exception.Message) |
+            Add-Content -Path $emergencyLog -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch { }
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
