@@ -130,6 +130,15 @@ if ($existing -and -not $Force) {
 }
 
 # ── Build the action argument string ─────────────────────────────────────────
+# Store ConfigPath as an absolute path in the task XML. Relative paths in the
+# action arguments are fragile -- they resolve against the spawned process's
+# CWD at task-fire time, which doesn't always match -WorkingDirectory.
+# Get-SyncConfig now anchors a relative path itself, but storing the absolute
+# value here also makes the registered XML self-explanatory to humans.
+if ($ConfigPath -and -not [System.IO.Path]::IsPathRooted($ConfigPath)) {
+    $ConfigPath = Join-Path $RepoPath $ConfigPath
+}
+
 $syncArgs = @(
     '-NonInteractive',
     '-ExecutionPolicy', 'RemoteSigned',
@@ -170,7 +179,7 @@ $taskParams = @{
     Trigger   = $trigger
     Settings  = $settings
     RunLevel  = 'Highest'
-    Force     = $Force.IsPresent
+    Force     = [bool]$Force
 }
 
 # ── Set run-as identity ───────────────────────────────────────────────────────

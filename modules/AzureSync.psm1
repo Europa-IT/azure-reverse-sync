@@ -201,6 +201,17 @@ function Get-SyncConfig {
         [string]$ConfigPath = (Join-Path $PSScriptRoot '..\config\sync-config.json')
     )
 
+    # Anchor a relative ConfigPath to the repo root (parent of modules/) for
+    # the same reason we anchor Logging.LogPath below: the orchestrator's CWD
+    # may not be the repo root in scheduled task spawns, remote sessions,
+    # and self-elevated processes. Without this, the task action's stored
+    # `-ConfigPath ".\config\sync-config.json"` resolves to <cwd>\config\...
+    # and Resolve-Path fails before any Write-SyncLog runs -- so the user
+    # sees no log file at all from a scheduled run.
+    if ($ConfigPath -and -not [System.IO.Path]::IsPathRooted($ConfigPath)) {
+        $ConfigPath = Join-Path (Split-Path $PSScriptRoot -Parent) $ConfigPath
+    }
+
     $resolved = Resolve-Path $ConfigPath -ErrorAction SilentlyContinue
     if (-not $resolved) {
         throw "Configuration file not found: $ConfigPath`nCopy config\sync-config.example.json to config\sync-config.json and fill in your values."

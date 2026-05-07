@@ -46,6 +46,35 @@ param(
     [switch]$RegisterTask
 )
 
+# -- Diagnostic transcript (-Debug only) -------------------------------------
+# Captures stdout, stderr, Write-Host output, and uncaught errors to a per-run
+# file when -Debug is passed. Use this when troubleshooting scheduled-task
+# failures or any other context where Write-Host output to the spawned
+# console is otherwise lost. Off by default to avoid accumulating
+# transcript-*.log files that the regular log retention sweep doesn't touch.
+#
+# The transcript path is anchored to the script's directory (not cwd) so it
+# works under the scheduled-task spawn even if -WorkingDirectory isn't
+# honored. If the primary path can't be written, fall back to
+# %TEMP%\azuresync-emergency.log so the failure itself is recorded.
+if ($PSBoundParameters['Debug']) {
+    try {
+        $transcriptDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'logs'
+        if (-not (Test-Path $transcriptDir)) {
+            New-Item -ItemType Directory -Path $transcriptDir -Force | Out-Null
+        }
+        $transcriptPath = Join-Path $transcriptDir ("transcript-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd_HHmmss'))
+        Start-Transcript -Path $transcriptPath -Force -ErrorAction Stop | Out-Null
+    } catch {
+        try {
+            $emergencyLog = Join-Path $env:TEMP 'azuresync-emergency.log'
+            ("{0}`tFailed to start transcript at '{1}': {2}" -f
+                (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $transcriptPath, $_.Exception.Message) |
+                Add-Content -Path $emergencyLog -Encoding UTF8 -ErrorAction SilentlyContinue
+        } catch { }
+    }
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -69,8 +98,15 @@ $script:Config = Get-SyncConfig @cfgArgs
 
 # Resolve DryRun: -DryRun switch takes precedence; config Sync.DryRun is a fallback.
 # Set $script:DryRun before any Write-SyncLog calls so the [DRYRUN] prefix is accurate.
-$script:DryRun = $DryRun.IsPresent -or ($script:Config.Sync.DryRun -eq $true)
-if ($script:Config.Sync.DryRun -eq $true -and -not $DryRun.IsPresent) {
+#
+# Use [bool]$DryRun rather than $DryRun.IsPresent: under Set-StrictMode -Version
+# Latest, in some hosts (notably scheduled tasks running as SYSTEM with -File)
+# the bound parameter surfaces as a value that lacks the .IsPresent property,
+# producing PropertyNotFoundException. The [bool] cast goes through the
+# SwitchParameter -> bool implicit conversion and is strict-mode-safe in every
+# host we've seen.
+$script:DryRun = [bool]$DryRun -or ($script:Config.Sync.DryRun -eq $true)
+if ($script:Config.Sync.DryRun -eq $true -and -not [bool]$DryRun) {
     Write-SyncLog "DryRun enabled via config file (Sync.DryRun = true)." -Level WARN
 }
 
