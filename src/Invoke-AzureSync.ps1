@@ -85,7 +85,7 @@ if ( $PSScriptRoot ){
 }
 
 # -- Load shared module --------------------------------------------------------
-$modulePath = Join-Path $scriptRoot 'modules\AzureSync.psm1'
+$modulePath = Join-Path $ScriptRoot 'modules\AzureSync.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "AzureSync.psm1 not found at $modulePath. Run from the repo root or ensure the modules\ directory is present."
 }
@@ -98,13 +98,6 @@ $script:Config = Get-SyncConfig @cfgArgs
 
 # Resolve DryRun: -DryRun switch takes precedence; config Sync.DryRun is a fallback.
 # Set $script:DryRun before any Write-SyncLog calls so the [DRYRUN] prefix is accurate.
-#
-# Use [bool]$DryRun rather than $DryRun.IsPresent: under Set-StrictMode -Version
-# Latest, in some hosts (notably scheduled tasks running as SYSTEM with -File)
-# the bound parameter surfaces as a value that lacks the .IsPresent property,
-# producing PropertyNotFoundException. The [bool] cast goes through the
-# SwitchParameter -> bool implicit conversion and is strict-mode-safe in every
-# host we've seen.
 $script:DryRun = [bool]$DryRun -or ($script:Config.Sync.DryRun -eq $true)
 if ($script:Config.Sync.DryRun -eq $true -and -not [bool]$DryRun) {
     Write-SyncLog "DryRun enabled via config file (Sync.DryRun = true)." -Level WARN
@@ -120,10 +113,7 @@ if ($RegisterTask) {
         exit 1
     }
 
-    # Hashtable splat (named binding). Array splat is positional in PowerShell --
-    # the previous '-Foo','Bar' array was binding by position, sending the TaskName
-    # value into the [int]IntervalMinutes parameter and failing with
-    # "Cannot convert 'AzureSync' to System.Int32".
+    # Hashtable splat (named binding).
     $taskArgs = @{ Force = $true }  # always re-register when called explicitly
     if ($taskCfg.TaskName)        { $taskArgs.TaskName        = $taskCfg.TaskName }
     if ($taskCfg.IntervalMinutes) { $taskArgs.IntervalMinutes = [int]$taskCfg.IntervalMinutes }
@@ -136,11 +126,11 @@ if ($RegisterTask) {
 }
 
 $mode = if ($script:DryRun) { 'DRY RUN' } else { 'LIVE' }
+$overallStart = Get-Date
 Write-SyncLog "================================================================"
-Write-SyncLog "azure-reverse-sync started [$mode] - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-SyncLog "azure-reverse-sync started [$mode]"
 Write-SyncLog "================================================================"
 
-$overallStart = Get-Date
 $overallErrors = 0
 
 function Invoke-Step {
@@ -156,7 +146,7 @@ function Invoke-Step {
 }
 
 # -- Sync ----------------------------------------------------------------------
-. (Join-Path $scriptRoot 'src\Connect-GraphApi.ps1')
+Invoke-Step "Graph API Connection"   "Connect-GraphApi.ps1"
 
 if (-not $SkipUsers) {
     Invoke-Step 'Sync Users'         'Sync-Users.ps1'

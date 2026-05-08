@@ -20,6 +20,75 @@ $script:RunStamp       = $null
 # in this session, so retention runs at most once per (process, template).
 $script:RetentionDone  = @{}
 
+# -- Get-SyncConfig -----------------------------------------------------------
+function Get-SyncConfig {
+    <#
+    .SYNOPSIS
+        Loads and validates sync-config.json. Returns the config object and sets $script:Config.
+    .PARAMETER ConfigPath
+        Path to sync-config.json. Defaults to .\config\sync-config.json relative to the
+        module root.
+    #>
+    param(
+        [string]$ConfigPath = (Join-Path $PSScriptRoot '..\config\sync-config.json')
+    )
+
+    # Anchor a relative ConfigPath to the repo root (parent of modules/) for
+    # the same reason we anchor Logging.LogPath below: the orchestrator's CWD
+    # may not be the repo root in scheduled task spawns, remote sessions,
+    # and self-elevated processes. Without this, the task action's stored
+    # `-ConfigPath ".\config\sync-config.json"` resolves to <cwd>\config\...
+    # and Resolve-Path fails before any Write-SyncLog runs -- so the user
+    # sees no log file at all from a scheduled run.
+    if ($ConfigPath -and -not [System.IO.Path]::IsPathRooted($ConfigPath)) {
+        $ConfigPath = Join-Path (Split-Path $PSScriptRoot -Parent) $ConfigPath
+    }
+
+    $resolved = Resolve-Path $ConfigPath -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        throw "Configuration file not found: $ConfigPath`nCopy config\sync-config.example.json to config\sync-config.json and fill in your values."
+    }
+
+    $raw = Get-Content $resolved.Path -Raw -Encoding UTF8
+    $config = $raw | ConvertFrom-Json
+
+    # Required field validation
+    $required = @(
+        @{ Path = 'AzureAD.TenantId';    Label = 'AzureAD.TenantId' },
+        @{ Path = 'AzureAD.ClientId';    Label = 'AzureAD.ClientId' },
+        @{ Path = 'LocalAD.Server';      Label = 'LocalAD.Server' },
+        @{ Path = 'LocalAD.TargetOU';    Label = 'LocalAD.TargetOU' },
+        @{ Path = 'LocalAD.GroupsOU';    Label = 'LocalAD.GroupsOU' }
+    )
+    foreach ($r in $required) {
+        $parts = $r.Path -split '\.'
+        $val = $config
+        foreach ($p in $parts) { $val = $val.$p }
+        # TODO maybe make this field validation more robust
+        if ([string]::IsNullOrWhiteSpace($val) -or $val -like '<*>') {
+            throw "Missing required config value: $($r.Label)"
+        }
+    }
+
+    # Anchor Logging.LogPath to the repo root if it's relative, so per-run
+    # files land in the repo's logs\ folder regardless of where the
+    # orchestrator was invoked from. Most common cause of drift: self-
+    # elevation via Start-Process -Verb RunAs, where the elevated process
+    # doesn't inherit the parent shell's cwd and lands in C:\Windows\System32.
+    # Same hazard applies to remote sessions and scheduled tasks whose
+    # action lacks -WorkingDirectory. Absolute paths pass through unchanged.
+    if ($config.PSObject.Properties['Logging'] -and
+        $config.Logging.PSObject.Properties['LogPath'] -and
+        -not [string]::IsNullOrWhiteSpace($config.Logging.LogPath) -and
+        -not [System.IO.Path]::IsPathRooted($config.Logging.LogPath)) {
+        $repoRoot = Split-Path $PSScriptRoot -Parent
+        $config.Logging.LogPath = Join-Path $repoRoot $config.Logging.LogPath
+    }
+
+    $script:Config = $config
+    return $config
+}
+
 # -- Get-ConfiguredLogPath (private) ------------------------------------------
 # Builds the per-section log template from $script:Config.Logging.LogPath
 # (a directory) plus the section name, e.g.:
@@ -32,7 +101,10 @@ function Get-ConfiguredLogPath {
     param(
         [Parameter(Mandatory)][ValidateSet('Sync','ScheduledTask')][string]$Section
     )
-    if (-not $script:Config) { return $null }
+    if (-not $script:Config) { 
+        $Result = Get-SyncConfig
+        if (-not $Result) { return $null }
+    }
     if (-not $script:Config.PSObject.Properties['Logging']) { return $null }
     $logging = $script:Config.Logging
     if (-not $logging.PSObject.Properties['LogPath']) { return $null }
@@ -188,73 +260,6 @@ function Write-TaskLog {
     Write-LogEntry -Message $Message -Level $Level -LogPath (Get-ConfiguredLogPath -Section 'ScheduledTask')
 }
 
-# -- Get-SyncConfig -----------------------------------------------------------
-function Get-SyncConfig {
-    <#
-    .SYNOPSIS
-        Loads and validates sync-config.json. Returns the config object and sets $script:Config.
-    .PARAMETER ConfigPath
-        Path to sync-config.json. Defaults to .\config\sync-config.json relative to the
-        module root.
-    #>
-    param(
-        [string]$ConfigPath = (Join-Path $PSScriptRoot '..\config\sync-config.json')
-    )
-
-    # Anchor a relative ConfigPath to the repo root (parent of modules/) for
-    # the same reason we anchor Logging.LogPath below: the orchestrator's CWD
-    # may not be the repo root in scheduled task spawns, remote sessions,
-    # and self-elevated processes. Without this, the task action's stored
-    # `-ConfigPath ".\config\sync-config.json"` resolves to <cwd>\config\...
-    # and Resolve-Path fails before any Write-SyncLog runs -- so the user
-    # sees no log file at all from a scheduled run.
-    if ($ConfigPath -and -not [System.IO.Path]::IsPathRooted($ConfigPath)) {
-        $ConfigPath = Join-Path (Split-Path $PSScriptRoot -Parent) $ConfigPath
-    }
-
-    $resolved = Resolve-Path $ConfigPath -ErrorAction SilentlyContinue
-    if (-not $resolved) {
-        throw "Configuration file not found: $ConfigPath`nCopy config\sync-config.example.json to config\sync-config.json and fill in your values."
-    }
-
-    $raw = Get-Content $resolved.Path -Raw -Encoding UTF8
-    $config = $raw | ConvertFrom-Json
-
-    # Required field validation
-    $required = @(
-        @{ Path = 'AzureAD.TenantId';    Label = 'AzureAD.TenantId' },
-        @{ Path = 'AzureAD.ClientId';    Label = 'AzureAD.ClientId' },
-        @{ Path = 'LocalAD.Server';      Label = 'LocalAD.Server' },
-        @{ Path = 'LocalAD.TargetOU';    Label = 'LocalAD.TargetOU' },
-        @{ Path = 'LocalAD.GroupsOU';    Label = 'LocalAD.GroupsOU' }
-    )
-    foreach ($r in $required) {
-        $parts = $r.Path -split '\.'
-        $val = $config
-        foreach ($p in $parts) { $val = $val.$p }
-        if ([string]::IsNullOrWhiteSpace($val) -or $val -like '<*>') {
-            throw "Missing required config value: $($r.Label)"
-        }
-    }
-
-    # Anchor Logging.LogPath to the repo root if it's relative, so per-run
-    # files land in the repo's logs\ folder regardless of where the
-    # orchestrator was invoked from. Most common cause of drift: self-
-    # elevation via Start-Process -Verb RunAs, where the elevated process
-    # doesn't inherit the parent shell's cwd and lands in C:\Windows\System32.
-    # Same hazard applies to remote sessions and scheduled tasks whose
-    # action lacks -WorkingDirectory. Absolute paths pass through unchanged.
-    if ($config.PSObject.Properties['Logging'] -and
-        $config.Logging.PSObject.Properties['LogPath'] -and
-        -not [string]::IsNullOrWhiteSpace($config.Logging.LogPath) -and
-        -not [System.IO.Path]::IsPathRooted($config.Logging.LogPath)) {
-        $repoRoot = Split-Path $PSScriptRoot -Parent
-        $config.Logging.LogPath = Join-Path $repoRoot $config.Logging.LogPath
-    }
-
-    $script:Config = $config
-    return $config
-}
 
 # -- ConvertTo-AdAttributes ---------------------------------------------------
 function ConvertTo-AdAttributes {
