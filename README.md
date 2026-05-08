@@ -40,6 +40,16 @@ Copy-Item config\sync-config.example.json config\sync-config.json
 
 Store your App Registration secret or certificate in **Windows Credential Manager** — never in `sync-config.json`.
 
+#### Sync filters (optional)
+
+The `Sync` block accepts these knobs:
+
+- `LicensedUsersOnly` (default `false`) — only sync Azure users with at least one assigned license.
+- `FilterGroupId` (default `""`) — only sync members of this Azure AD group. Overrides `LicensedUsersOnly` when set.
+- `DisableDeletedUsers` (default `true`) — when an Azure user is deleted, disable the on-prem account and move it to `LocalAD.DisabledOU`.
+
+Guest accounts (`*#EXT#*` UPNs) are always excluded regardless of filter mode.
+
 ### 2. Dry-run preview
 
 ```powershell
@@ -99,12 +109,40 @@ Or call the registration script directly for more control:
 
 ---
 
+## Logging
+
+Each run writes a timestamped log file under the directory configured in `Logging.LogPath`:
+
+```
+logs\Sync-2026-05-06_143020.log              # one file per Invoke-AzureSync.ps1 run
+logs\ScheduledTask-2026-05-06_143020.log     # one file per Register-SyncTask.ps1 run
+```
+
+Relative `Logging.LogPath` values anchor to the repo root, so logs land in the same place regardless of how the orchestrator was invoked (interactive shell, self-elevated, scheduled task as SYSTEM, remote session).
+
+`Logging.MaxFiles` (default `100`) keeps the most recent N files per template and prunes the rest once per run. The default of 100 covers ~2 days at the default 30-minute interval.
+
+### Forensic transcripts (`-Debug`)
+
+When troubleshooting scheduled-task failures or any context where console output would otherwise be lost, pass `-Debug`:
+
+```powershell
+.\Start-AzureSync.ps1 -DryRun -Debug
+.\src\Invoke-AzureSync.ps1 -Debug
+```
+
+This starts a `Start-Transcript` at orchestrator entry, capturing stdout/stderr/errors to `logs\transcript-<stamp>.log` for the run. Transcripts are not auto-pruned; delete them manually when no longer needed.
+
+---
+
 ## Project Structure
 
 ```
 azure-reverse-sync/
 ├── config/
 │   └── sync-config.example.json       # Configuration template (copy to sync-config.json)
+├── docs/
+│   └── deployment-outline.md          # Phased deployment guide
 ├── src/
 │   ├── Invoke-AzureSync.ps1           # Main orchestrator
 │   ├── Connect-GraphApi.ps1           # Microsoft Graph authentication
@@ -118,7 +156,7 @@ azure-reverse-sync/
 │   ├── Invoke-Tests.ps1               # Pester test runner
 │   ├── Sync-Users.Tests.ps1
 │   ├── Sync-Groups.Tests.ps1
-├── logs/                              # Gitignored; sync logs written here
+├── logs/                              # Gitignored; per-run sync logs written here
 ├── Start-AzureSync.ps1                # Entry point: elevates, installs prereqs, runs sync
 ├── Install-Prerequisites.ps1          # Module installation and validation
 └── .gitignore

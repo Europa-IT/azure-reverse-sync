@@ -94,7 +94,7 @@ to Active Directory.
 .\src\Invoke-AzureSync.ps1 -DryRun
 ```
 
-**Review the log** (`logs\sync.log`) and verify:
+**Review the latest log file** in `logs\` (filename `Sync-<stamp>.log`) and verify:
 
 | Check | Expected log entry |
 |---|---|
@@ -102,6 +102,9 @@ to Active Directory.
 | User creation candidates | `[DRYRUN] Would create user: ...` for each Azure user not yet in AD |
 | Group creation candidates | `[DRYRUN] Would create group: ...` |
 | Account state | `[DRYRUN] Would disable/enable: ...` for any mismatches |
+
+> If `logs\Sync-*.log` doesn't appear or the run fails before logging starts, re-run with
+> `-Debug` to capture a forensic transcript at `logs\transcript-<stamp>.log`.
 
 **Go/no-go:** All dry-run entries are plausible (correct UPNs, expected group names,
 correct realm). No unexpected `ERROR` lines.
@@ -127,9 +130,10 @@ expectations. Archive this log.
 .\src\Invoke-AzureSync.ps1 
 ```
 
-Monitor `logs\sync.log` in real time:
+Monitor the run's log file in real time:
 ```powershell
-Get-Content logs\sync.log -Wait
+$latest = Get-ChildItem logs\Sync-*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Get-Content $latest.FullName -Wait
 ```
 
 ### 2.3  Schedule recurring sync
