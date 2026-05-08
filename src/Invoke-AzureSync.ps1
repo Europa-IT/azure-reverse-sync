@@ -37,7 +37,7 @@
     .\src\Invoke-AzureSync.ps1 -RegisterTask
 #>
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding()]
 param(
     [switch]$DryRun,
     [switch]$SkipUsers,
@@ -146,7 +146,12 @@ function Invoke-Step {
 }
 
 # -- Sync ----------------------------------------------------------------------
-Invoke-Step "Graph API Connection"   "Connect-GraphApi.ps1"
+# Graph connection isn't wrapped in Invoke-Step on purpose: a failed connect
+# leaves no Graph session for the user/group sync sub-scripts, and 'soldier on'
+# behavior just produces cascading Get-MgUser/Get-MgGroup errors that bury the
+# real root cause. Let connection failures abort the run loudly.
+Write-SyncLog "-- Graph API Connection --"
+. (Join-Path $scriptRoot 'src\Connect-GraphApi.ps1')
 
 if (-not $SkipUsers) {
     Invoke-Step 'Sync Users'         'Sync-Users.ps1'
