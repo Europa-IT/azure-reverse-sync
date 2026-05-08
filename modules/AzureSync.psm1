@@ -2,8 +2,12 @@
 .SYNOPSIS
     Shared helper module for azure-reverse-sync.
 .DESCRIPTION
-    Provides: Write-SyncLog, Get-SyncConfig, ConvertTo-AdAttributes, Test-AdUserExists,
-    New-RandomPassword, and script-level $script:DryRun / $script:Config state.
+    Provides logging helpers (Write-SyncLog, Write-TaskLog), config loader
+    (Get-SyncConfig), AD lookup helpers (Test-AdUserExists, Test-AdGroupExists),
+    Graph-to-AD attribute mapping (ConvertTo-AdAttributes), and password
+    generation (New-RandomPassword, New-SecureRandomPassword). Owns module-
+    scope state shared across logging calls: $script:DryRun, $script:Config,
+    $script:RunStamp, $script:RetentionDone.
 #>
 
 Set-StrictMode -Version Latest

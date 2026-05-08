@@ -10,7 +10,7 @@ BeforeAll {
             GroupsOU  = 'OU=Groups,DC=test,DC=local'
             DisabledOU = 'OU=Disabled,DC=test,DC=local'
         }
-        Sync = [PSCustomObject]@{ DryRun = $false; LogPath = '' }
+        Sync = [PSCustomObject]@{ DryRun = $false }
     }
     $script:DryRun = $false
 }

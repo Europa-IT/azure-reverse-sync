@@ -16,7 +16,7 @@ BeforeAll {
             JobTitle          = 'Title'
             MobilePhone       = 'MobilePhone'
         }
-        Sync         = [PSCustomObject]@{ DryRun = $false; LogPath = ''; FilterGroupId = ''; LicensedUsersOnly = $false }
+        Sync         = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false }
         AzureAD      = [PSCustomObject]@{ TenantId = 'test-tenant'; ClientId = 'test-client'; CertificateThumbprint = '' }
     }
     $script:DryRun = $false
@@ -32,7 +32,7 @@ Describe 'ConvertTo-AdAttributes' -Tag 'Unit' {
             UserPrincipalName = 'jane.doe@corp.example.com'
             Mail              = 'jane.doe@corp.example.com'
             Department        = 'Engineering'
-            JobTitle          = 'Software Engineer'
+            JobTitle           = 'Software Engineer'
             MobilePhone       = '+1-555-0100'
         }
 
