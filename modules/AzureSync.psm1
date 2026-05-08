@@ -101,9 +101,14 @@ function Get-ConfiguredLogPath {
     param(
         [Parameter(Mandatory)][ValidateSet('Sync','ScheduledTask')][string]$Section
     )
-    if (-not $script:Config) { 
-        $Result = Get-SyncConfig
-        if (-not $Result) { return $null }
+    if (-not $script:Config) {
+        # Lazy-load convenience for callers that didn't go through the
+        # orchestrator (e.g. Register-SyncTask.ps1 invoked standalone).
+        # Wrapped in try/catch so Write-SyncLog/Write-TaskLog never throws --
+        # a logging helper that crashes the caller is worse than one that
+        # silently degrades to console-only output.
+        try { Get-SyncConfig | Out-Null } catch { return $null }
+        if (-not $script:Config) { return $null }
     }
     if (-not $script:Config.PSObject.Properties['Logging']) { return $null }
     $logging = $script:Config.Logging
