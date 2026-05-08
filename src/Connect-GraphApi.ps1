@@ -38,7 +38,7 @@ $connectParams = @{
 }
 
 if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
-    # ── Certificate auth (preferred) ──────────────────────────────────────────
+    # ── Certificate auth (preferred) ──────────────────────────────────
     $cert = Get-Item "Cert:\LocalMachine\My\$($cfg.CertificateThumbprint)" -ErrorAction SilentlyContinue
     if (-not $cert) {
         throw "Certificate with thumbprint '$($cfg.CertificateThumbprint)' not found in LocalMachine\My store."
@@ -61,9 +61,19 @@ if (-not [string]::IsNullOrWhiteSpace($cfg.CertificateThumbprint)) {
     # ── Try Windows Credential Manager, then fall back to device code flow ────
     $credTarget = "AzureSync-ClientSecret-$($cfg.TenantId)"
     $storedCred = $null
-    try {
-        $storedCred = Get-StoredCredential -Target $credTarget -ErrorAction SilentlyContinue
-    } catch { }
+
+    # Get-StoredCredential lives in the third-party CredentialManager module.
+    # Install-Prerequisites.ps1 installs it now, but check defensively in case
+    # someone skipped prereqs or installed via a different route -- otherwise
+    # the surrounding try/catch swallows the CommandNotFoundException and
+    # silently falls through to device code with no explanation.
+    if (Get-Command Get-StoredCredential -ErrorAction SilentlyContinue) {
+        try {
+            $storedCred = Get-StoredCredential -Target $credTarget -ErrorAction SilentlyContinue
+        } catch { }
+    } else {
+        Write-SyncLog "CredentialManager PowerShell module not installed -- skipping Windows Credential Manager auth lookup. Install with: Install-Module CredentialManager -Scope CurrentUser" -Level WARN
+    }
 
     if ($storedCred) {
         $secureSecret = [System.Net.NetworkCredential]::new('', $storedCred.Password).SecurePassword

@@ -4,6 +4,8 @@
     Installs and validates all prerequisites for azure-reverse-sync.
 .DESCRIPTION
     - Installs the Microsoft.Graph PowerShell module
+    - Installs the CredentialManager module (used by Connect-GraphApi.ps1's
+      Windows Credential Manager auth path)
     - Installs Pester v5 for running tests
     - Confirms the ActiveDirectory RSAT module is available
     - Confirms certutil.exe is available (needed for NTAuth CA trust)
@@ -85,7 +87,22 @@ foreach ($sub in $requiredSubmodules) {
     Write-OK "$sub available"
 }
 
-# -- 4. Pester v5 -------------------------------------------------------------
+# -- 4. CredentialManager module ----------------------------------------------
+# Used by Connect-GraphApi.ps1 to look up a stored client secret under target
+# 'AzureSync-ClientSecret-<TenantId>'. Without it, the credential manager auth
+# path silently falls through to interactive device code flow, which surprises
+# users following the documented setup.
+Write-Step "Checking CredentialManager module..."
+$credMgr = Get-Module -ListAvailable -Name CredentialManager | Sort-Object Version -Descending | Select-Object -First 1
+if ($credMgr) {
+    Write-OK "CredentialManager $($credMgr.Version) already installed"
+} else {
+    Write-Step "Installing CredentialManager..."
+    Install-Module -Name CredentialManager -Scope AllUsers -Force
+    Write-OK "CredentialManager installed"
+}
+
+# -- 5. Pester v5 -------------------------------------------------------------
 Write-Step "Checking Pester..."
 $pester = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
 if ($pester -and $pester.Version.Major -ge 5) {
