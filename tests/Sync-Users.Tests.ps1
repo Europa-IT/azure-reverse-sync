@@ -32,7 +32,7 @@ Describe 'ConvertTo-AdAttributes' -Tag 'Unit' {
             UserPrincipalName = 'jane.doe@corp.example.com'
             Mail              = 'jane.doe@corp.example.com'
             Department        = 'Engineering'
-            JobTitle           = 'Software Engineer'
+            JobTitle          = 'Software Engineer'
             MobilePhone       = '+1-555-0100'
         }
 
