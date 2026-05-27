@@ -113,6 +113,7 @@ Describe 'Sync-Users (DryRun)' -Tag 'Unit' {
         }
         Mock Test-AdUserExists { return $null }
         Mock Get-AdUserByUpn { return $null }
+        Mock Get-AdUserBySamAccountName { return $null }
         Mock New-ADUser { }
         Mock Set-ADUser { }
         Mock Write-SyncLog { }
@@ -127,7 +128,7 @@ Describe 'Sync-Users (DryRun)' -Tag 'Unit' {
     }
 }
 
-Describe 'Sync-Users UPN conflict (AdoptExistingUsers = false)' -Tag 'Unit' {
+Describe 'Sync-Users collision (AdoptExistingUsers = false)' -Tag 'Unit' {
 
     BeforeAll {
         $script:DryRun = $false
@@ -142,13 +143,14 @@ Describe 'Sync-Users UPN conflict (AdoptExistingUsers = false)' -Tag 'Unit' {
             )
         }
         Mock Test-AdUserExists { return $null }       # not yet managed by this tool
-        Mock Get-AdUserByUpn {                          # but a pre-existing account owns the UPN
+        Mock Get-AdUserByUpn {                          # a pre-existing account owns the UPN
             return [PSCustomObject]@{
                 DistinguishedName               = 'CN=Dave,OU=Staff,DC=corp,DC=test'
                 UserPrincipalName               = 'dave@corp.test'
                 'msDS-cloudExtensionAttribute1' = $null
             }
         }
+        Mock Get-AdUserBySamAccountName { return $null }
         Mock New-ADUser { }
         Mock Set-ADUser { }
         Mock Write-SyncLog { }
@@ -157,14 +159,14 @@ Describe 'Sync-Users UPN conflict (AdoptExistingUsers = false)' -Tag 'Unit' {
 
     AfterAll { $script:DryRun = $false }
 
-    It 'does not create or modify a user when the UPN exists and adoption is off' {
+    It 'does not create or modify a user when a collision exists and adoption is off' {
         . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
         Should -Invoke New-ADUser -Times 0
         Should -Invoke Set-ADUser -Times 0
     }
 }
 
-Describe 'Sync-Users UPN conflict (AdoptExistingUsers = true)' -Tag 'Unit' {
+Describe 'Sync-Users UPN collision (AdoptExistingUsers = true)' -Tag 'Unit' {
 
     BeforeAll {
         $script:DryRun = $false
@@ -216,6 +218,65 @@ Describe 'Sync-Users UPN conflict (AdoptExistingUsers = true)' -Tag 'Unit' {
     }
 
     It 'stamps the Azure OID via Set-ADUser and does not create a new user' {
+        . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
+        Should -Invoke Set-ADUser -Times 1
+        Should -Invoke New-ADUser -Times 0
+    }
+}
+
+Describe 'Sync-Users SamAccountName collision (AdoptExistingUsers = true)' -Tag 'Unit' {
+
+    BeforeAll {
+        $script:DryRun = $false
+        $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false; AdoptExistingUsers = $true }
+        Mock Get-MgUser {
+            return @(
+                [PSCustomObject]@{
+                    Id = 'azure-oid-999'; DisplayName = 'Frank SamMatch'; GivenName = 'Frank';
+                    Surname = 'SamMatch'; UserPrincipalName = 'fsam@windhamcountyvt.gov'; Mail = 'fsam@windhamcountyvt.gov';
+                    Department = ''; JobTitle = ''; MobilePhone = ''; OfficeLocation = '';
+                    CompanyName = ''; AccountEnabled = $true
+                }
+            )
+        }
+        Mock Test-AdUserExists { return $null }       # no OID-stamped account yet
+        Mock Get-AdUserByUpn { return $null }           # no account has the Azure (.gov) UPN
+        Mock Get-AdUserBySamAccountName {               # but 'fsam' login exists under an older UPN suffix
+            return [PSCustomObject]@{
+                DistinguishedName               = 'CN=Frank,OU=Staff,DC=corp,DC=test'
+                UserPrincipalName               = 'fsam@windhamcountyvt.com'
+                'msDS-cloudExtensionAttribute1' = $null
+            }
+        }
+        Mock Get-ADUser {                               # writable re-fetch by DN
+            return [PSCustomObject]@{
+                DistinguishedName               = 'CN=Frank,OU=Staff,DC=corp,DC=test'
+                UserPrincipalName               = 'fsam@windhamcountyvt.com'
+                Enabled                         = $true
+                DisplayName                     = 'Frank SamMatch'
+                GivenName                       = 'Frank'
+                Surname                         = 'SamMatch'
+                EmailAddress                    = 'fsam@windhamcountyvt.gov'
+                Department                      = $null
+                Title                           = $null
+                MobilePhone                     = $null
+                Office                          = $null
+                Company                         = $null
+                'msDS-cloudExtensionAttribute1' = $null
+            }
+        }
+        Mock Set-ADUser { }
+        Mock New-ADUser { }
+        Mock Write-SyncLog { }
+        Mock New-SecureRandomPassword { return ('Password123!' | ConvertTo-SecureString -AsPlainText -Force) }
+    }
+
+    AfterAll {
+        $script:DryRun = $false
+        $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false }
+    }
+
+    It 'adopts a SAM-matched account instead of failing on New-ADUser' {
         . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
         Should -Invoke Set-ADUser -Times 1
         Should -Invoke New-ADUser -Times 0

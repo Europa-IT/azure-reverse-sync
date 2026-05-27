@@ -4,10 +4,11 @@
 .DESCRIPTION
     Provides logging helpers (Write-SyncLog, Write-TaskLog), config loader
     (Get-SyncConfig), AD lookup helpers (Test-AdUserExists, Get-AdUserByUpn,
-    Test-AdGroupExists), Graph-to-AD attribute mapping (ConvertTo-AdAttributes),
-    and password generation (New-RandomPassword, New-SecureRandomPassword). Owns
-    module-scope state shared across logging calls: $script:DryRun,
-    $script:Config, $script:RunStamp, $script:RetentionDone.
+    Get-AdUserBySamAccountName, Test-AdGroupExists), Graph-to-AD attribute
+    mapping (ConvertTo-AdAttributes), and password generation
+    (New-RandomPassword, New-SecureRandomPassword). Owns module-scope state
+    shared across logging calls: $script:DryRun, $script:Config,
+    $script:RunStamp, $script:RetentionDone.
 #>
 
 Set-StrictMode -Version Latest
@@ -368,6 +369,42 @@ function Get-AdUserByUpn {
     }
 }
 
+# -- Get-AdUserBySamAccountName -----------------------------------------------
+function Get-AdUserBySamAccountName {
+    <#
+    .SYNOPSIS
+        Returns the AD user with the given SamAccountName in the target domain,
+        or $null if none exists.
+    .DESCRIPTION
+        SamAccountName is unique per domain. Sync-Users.ps1 uses this to catch a
+        pre-existing account whose UPN differs from the Azure UPN (e.g. an older
+        on-prem UPN suffix) but whose login name collides with the one we would
+        assign -- which would otherwise make New-ADUser fail with 'The specified
+        account already exists'. Loads the same properties the update diff needs
+        so an adopted account can flow straight into attribute reconciliation.
+    .PARAMETER SamAccountName
+        The sAMAccountName to look up.
+    .PARAMETER Server
+        The AD domain controller / domain to query.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SamAccountName,
+        [Parameter(Mandatory)][string]$Server
+    )
+
+    try {
+        $user = Get-ADUser -Filter "SamAccountName -eq '$SamAccountName'" `
+                           -Server $Server `
+                           -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled,
+                                       DisplayName, GivenName, Surname, EmailAddress,
+                                       Department, Title, MobilePhone, Office, Company `
+                           -ErrorAction SilentlyContinue
+        return $user
+    } catch {
+        return $null
+    }
+}
+
 # -- Test-AdGroupExists -------------------------------------------------------
 function Test-AdGroupExists {
     <#
@@ -450,6 +487,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-AdAttributes',
     'Test-AdUserExists',
     'Get-AdUserByUpn',
+    'Get-AdUserBySamAccountName',
     'Test-AdGroupExists',
     'New-RandomPassword',
     'New-SecureRandomPassword'
