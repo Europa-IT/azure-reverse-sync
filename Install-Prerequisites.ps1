@@ -118,3 +118,11 @@ Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Copy config\sync-config.example.json to config\sync-config.json and fill in your values."
 Write-Host "  2. Run: .\src\Invoke-AzureSync.ps1 -DryRun"
 Write-Host ""
+
+# Explicit success exit code. Without this, the script falls off the end and
+# $LASTEXITCODE keeps whatever the last native command left behind -- on a
+# fresh machine the NuGet / PSGallery bootstrap that Install-Module triggers
+# commonly leaves 1. Start-AzureSync.ps1 reads $LASTEXITCODE to decide whether
+# prerequisites succeeded, so a stale non-zero value aborts the sync even
+# though every check above passed. The failure paths already 'exit 1'.
+exit 0
