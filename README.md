@@ -47,7 +47,7 @@ The `Sync` block accepts these knobs:
 - `LicensedUsersOnly` (default `false`) — only sync Azure users with at least one assigned license.
 - `FilterGroupId` (default `""`) — only sync members of this Azure AD group. Overrides `LicensedUsersOnly` when set.
 - `DisableDeletedUsers` (default `true`) — when an Azure user is deleted, disable the on-prem account and move it to `LocalAD.DisabledOU`.
-- `AdoptExistingUsers` (default `false`) — when an Azure user's UPN already belongs to an on-prem account this tool didn't create, `true` adopts that account (stamps it with the Azure OID and manages it going forward); `false` skips it with a warning. Only adopts accounts in the target domain, and never overwrites an account already managed under a different Azure OID.
+- `AdoptExistingUsers` (default `false`) — controls what happens when an Azure user collides with a pre-existing on-prem account this tool didn't create. A collision is matched by UPN (forest-wide, via the Global Catalog) or by the derived SamAccountName (target domain). `true` adopts the account: stamps it with the Azure OID, aligns its UPN to the Azure UPN when they differ, and manages it going forward. `false` skips it with a warning. Adoption only touches accounts in the target domain, never overwrites an account already managed under a different Azure OID, and manages the account in place (it is not moved).
 
 Guest accounts (`*#EXT#*` UPNs) are always excluded regardless of filter mode.
 
