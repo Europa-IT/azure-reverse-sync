@@ -23,6 +23,15 @@ Write-SyncLog "=== Sync-Users started ==="
 $filterGroupId     = $cfg.Sync.FilterGroupId
 $licensedUsersOnly = $cfg.Sync.LicensedUsersOnly -eq $true
 
+# Opt-in (default false): when an Azure user's UPN already belongs to a
+# pre-existing on-prem account this tool didn't create, adopt that account
+# (stamp it with the Azure OID and manage it) instead of skipping. Read
+# defensively so configs predating this key default to false under StrictMode.
+$adoptExisting = $false
+if ($cfg.Sync.PSObject.Properties['AdoptExistingUsers']) {
+    $adoptExisting = $cfg.Sync.AdoptExistingUsers -eq $true
+}
+
 if ($filterGroupId) {
     # -- Scope to members of a specific Azure AD group ------------------------
     Write-SyncLog "Fetching users from filter group: $filterGroupId"
@@ -65,12 +74,70 @@ Write-SyncLog "Users to sync: $(@($graphUsers).Count)"
 $script:SyncableUserIds = [System.Collections.Generic.HashSet[string]]::new()
 foreach ($u in $graphUsers) { [void]$script:SyncableUserIds.Add([string]$u.Id) }
 
-$stats = @{ Created = 0; Updated = 0; Skipped = 0; Errors = 0 }
+$stats = @{ Created = 0; Updated = 0; Skipped = 0; Conflicts = 0; Adopted = 0; Errors = 0 }
 
 foreach ($gUser in $graphUsers) {
     try {
         $adAttrs = ConvertTo-AdAttributes -GraphUser $gUser -Config $cfg
         $existing = Test-AdUserExists -AzureObjectId $gUser.Id -Server $adSrv
+
+        if (-not $existing) {
+            # -- Resolve UPN collisions with unmanaged accounts ---------------
+            # Test-AdUserExists only matches accounts already stamped with this
+            # Azure OID. An account that exists with this UPN but no OID stamp
+            # (a pre-existing identity, or one created by another process) looks
+            # "new" here -- and because UPN uniqueness is enforced forest-wide,
+            # New-ADUser would fail with a cryptic 'server is unwilling to
+            # process the request'. Detect it up front (forest-wide, via the GC).
+            $upnConflict = Get-AdUserByUpn -UserPrincipalName $gUser.UserPrincipalName -Server $adSrv
+            if ($upnConflict) {
+                if (-not $adoptExisting) {
+                    Write-SyncLog ("Skipping $($gUser.UserPrincipalName): an AD account with this UPN " +
+                                   "already exists ($($upnConflict.DistinguishedName)) and is not managed " +
+                                   "by this tool. Set Sync.AdoptExistingUsers = true to adopt it, or " +
+                                   "resolve the conflict manually.") -Level WARN
+                    $stats.Conflicts++
+                    continue
+                }
+
+                # Adopt: only an account in the target domain can be adopted in
+                # place -- a forest-wide GC hit in another domain can't be pulled
+                # into this sync. Re-fetch from the configured (writable) server
+                # by UPN, loading the same properties the update diff needs.
+                $adopt = Get-ADUser -Filter "UserPrincipalName -eq '$($gUser.UserPrincipalName)'" `
+                                    -Server $adSrv `
+                                    -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled,
+                                                DisplayName, GivenName, Surname, EmailAddress,
+                                                Department, Title, MobilePhone, Office, Company `
+                                    -ErrorAction SilentlyContinue
+                if (-not $adopt) {
+                    Write-SyncLog ("Cannot adopt $($gUser.UserPrincipalName): the colliding account " +
+                                   "($($upnConflict.DistinguishedName)) is not in the target domain " +
+                                   "($adSrv). Skipping.") -Level WARN
+                    $stats.Conflicts++
+                    continue
+                }
+                $adoptOid = [string]$adopt.'msDS-cloudExtensionAttribute1'
+                if ($adoptOid -and $adoptOid -ne $gUser.Id) {
+                    Write-SyncLog ("Cannot adopt $($gUser.UserPrincipalName): account " +
+                                   "$($adopt.DistinguishedName) is already managed under a different " +
+                                   "Azure OID ($adoptOid). Skipping.") -Level WARN
+                    $stats.Conflicts++
+                    continue
+                }
+
+                if ($script:DryRun) {
+                    Write-SyncLog "Would adopt existing account: $($gUser.UserPrincipalName) ($($adopt.DistinguishedName)) - stamp Azure OID $($gUser.Id)"
+                } else {
+                    Set-ADUser -Identity $adopt.DistinguishedName -Server $adSrv `
+                               -Replace @{ 'msDS-cloudExtensionAttribute1' = $gUser.Id }
+                    Write-SyncLog "Adopted existing account: $($gUser.UserPrincipalName) ($($adopt.DistinguishedName)) - stamped Azure OID $($gUser.Id)" -Level WARN
+                }
+                $stats.Adopted++
+                # Reconcile attributes this run by flowing into the update path.
+                $existing = $adopt
+            }
+        }
 
         if (-not $existing) {
             # -- Create new AD user -------------------------------------------
@@ -158,4 +225,4 @@ foreach ($gUser in $graphUsers) {
     }
 }
 
-Write-SyncLog "=== Sync-Users complete - Created: $($stats.Created), Updated: $($stats.Updated), Skipped: $($stats.Skipped), Errors: $($stats.Errors) ==="
+Write-SyncLog "=== Sync-Users complete - Created: $($stats.Created), Updated: $($stats.Updated), Skipped: $($stats.Skipped), Adopted: $($stats.Adopted), Conflicts: $($stats.Conflicts), Errors: $($stats.Errors) ==="

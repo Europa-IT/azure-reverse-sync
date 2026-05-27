@@ -30,7 +30,8 @@
     "DryRun": false,
     "DisableDeletedUsers": true,
     "LicensedUsersOnly": false,
-    "FilterGroupId": ""
+    "FilterGroupId": "",
+    "AdoptExistingUsers": false
   },
 
   "ScheduledTask": {
