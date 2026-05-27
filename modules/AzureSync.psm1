@@ -4,7 +4,7 @@
 .DESCRIPTION
     Provides logging helpers (Write-SyncLog, Write-TaskLog), config loader
     (Get-SyncConfig), AD lookup helpers (Test-AdUserExists, Get-AdUserByUpn,
-    Get-AdUserBySamAccountName, Test-AdGroupExists), Graph-to-AD attribute
+    Get-AdObjectBySamAccountName, Test-AdGroupExists), Graph-to-AD attribute
     mapping (ConvertTo-AdAttributes), and password generation
     (New-RandomPassword, New-SecureRandomPassword). Owns module-scope state
     shared across logging calls: $script:DryRun, $script:Config,
@@ -369,19 +369,21 @@ function Get-AdUserByUpn {
     }
 }
 
-# -- Get-AdUserBySamAccountName -----------------------------------------------
-function Get-AdUserBySamAccountName {
+# -- Get-AdObjectBySamAccountName ---------------------------------------------
+function Get-AdObjectBySamAccountName {
     <#
     .SYNOPSIS
-        Returns the AD user with the given SamAccountName in the target domain,
-        or $null if none exists.
+        Returns any directory object (user, group, computer, ...) in the target
+        domain whose sAMAccountName matches, or $null if none exists.
     .DESCRIPTION
-        SamAccountName is unique per domain. Sync-Users.ps1 uses this to catch a
-        pre-existing account whose UPN differs from the Azure UPN (e.g. an older
-        on-prem UPN suffix) but whose login name collides with the one we would
-        assign -- which would otherwise make New-ADUser fail with 'The specified
-        account already exists'. Loads the same properties the update diff needs
-        so an adopted account can flow straight into attribute reconciliation.
+        sAMAccountName is unique across ALL security principals in a domain, not
+        just users -- so the login name we would assign a new user may already be
+        held by a group or computer. New-ADUser then fails with 'The specified
+        account already exists' / 'The specified group already exists'.
+        Sync-Users.ps1 inspects the returned object's ObjectClass: a 'user' is an
+        adoptable account; any other class is a hard name conflict it skips. The
+        caller re-fetches the full user by DN when it decides to adopt, so this
+        only needs to surface DistinguishedName and ObjectClass.
     .PARAMETER SamAccountName
         The sAMAccountName to look up.
     .PARAMETER Server
@@ -393,13 +395,12 @@ function Get-AdUserBySamAccountName {
     )
 
     try {
-        $user = Get-ADUser -Filter "SamAccountName -eq '$SamAccountName'" `
-                           -Server $Server `
-                           -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled,
-                                       DisplayName, GivenName, Surname, EmailAddress,
-                                       Department, Title, MobilePhone, Office, Company `
-                           -ErrorAction SilentlyContinue
-        return $user
+        $obj = Get-ADObject -Filter "sAMAccountName -eq '$SamAccountName'" `
+                            -Server $Server `
+                            -Properties sAMAccountName, objectClass `
+                            -ErrorAction SilentlyContinue |
+               Select-Object -First 1
+        return $obj
     } catch {
         return $null
     }
@@ -487,7 +488,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-AdAttributes',
     'Test-AdUserExists',
     'Get-AdUserByUpn',
-    'Get-AdUserBySamAccountName',
+    'Get-AdObjectBySamAccountName',
     'Test-AdGroupExists',
     'New-RandomPassword',
     'New-SecureRandomPassword'

@@ -113,7 +113,7 @@ Describe 'Sync-Users (DryRun)' -Tag 'Unit' {
         }
         Mock Test-AdUserExists { return $null }
         Mock Get-AdUserByUpn { return $null }
-        Mock Get-AdUserBySamAccountName { return $null }
+        Mock Get-AdObjectBySamAccountName { return $null }
         Mock New-ADUser { }
         Mock Set-ADUser { }
         Mock Write-SyncLog { }
@@ -150,7 +150,7 @@ Describe 'Sync-Users collision (AdoptExistingUsers = false)' -Tag 'Unit' {
                 'msDS-cloudExtensionAttribute1' = $null
             }
         }
-        Mock Get-AdUserBySamAccountName { return $null }
+        Mock Get-AdObjectBySamAccountName { return $null }
         Mock New-ADUser { }
         Mock Set-ADUser { }
         Mock Write-SyncLog { }
@@ -224,7 +224,7 @@ Describe 'Sync-Users UPN collision (AdoptExistingUsers = true)' -Tag 'Unit' {
     }
 }
 
-Describe 'Sync-Users SamAccountName collision (AdoptExistingUsers = true)' -Tag 'Unit' {
+Describe 'Sync-Users SamAccountName collision with a user (AdoptExistingUsers = true)' -Tag 'Unit' {
 
     BeforeAll {
         $script:DryRun = $false
@@ -241,11 +241,11 @@ Describe 'Sync-Users SamAccountName collision (AdoptExistingUsers = true)' -Tag 
         }
         Mock Test-AdUserExists { return $null }       # no OID-stamped account yet
         Mock Get-AdUserByUpn { return $null }           # no account has the Azure (.gov) UPN
-        Mock Get-AdUserBySamAccountName {               # but 'fsam' login exists under an older UPN suffix
+        Mock Get-AdObjectBySamAccountName {             # but 'fsam' login exists as a USER under an older UPN suffix
             return [PSCustomObject]@{
-                DistinguishedName               = 'CN=Frank,OU=Staff,DC=corp,DC=test'
-                UserPrincipalName               = 'fsam@windhamcountyvt.com'
-                'msDS-cloudExtensionAttribute1' = $null
+                DistinguishedName = 'CN=Frank,OU=Staff,DC=corp,DC=test'
+                objectClass       = 'user'
+                sAMAccountName    = 'fsam'
             }
         }
         Mock Get-ADUser {                               # writable re-fetch by DN
@@ -276,9 +276,52 @@ Describe 'Sync-Users SamAccountName collision (AdoptExistingUsers = true)' -Tag 
         $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false }
     }
 
-    It 'adopts a SAM-matched account instead of failing on New-ADUser' {
+    It 'adopts a SAM-matched user instead of failing on New-ADUser' {
         . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
         Should -Invoke Set-ADUser -Times 1
         Should -Invoke New-ADUser -Times 0
+    }
+}
+
+Describe 'Sync-Users SamAccountName owned by a group (AdoptExistingUsers = true)' -Tag 'Unit' {
+
+    BeforeAll {
+        $script:DryRun = $false
+        $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false; AdoptExistingUsers = $true }
+        Mock Get-MgUser {
+            return @(
+                [PSCustomObject]@{
+                    Id = 'azure-oid-555'; DisplayName = 'Dispatch Desk'; GivenName = 'Dispatch';
+                    Surname = 'Desk'; UserPrincipalName = 'dispatch@corp.onmicrosoft.com'; Mail = 'dispatch@corp.test';
+                    Department = ''; JobTitle = ''; MobilePhone = ''; OfficeLocation = '';
+                    CompanyName = ''; AccountEnabled = $true
+                }
+            )
+        }
+        Mock Test-AdUserExists { return $null }
+        Mock Get-AdUserByUpn { return $null }
+        Mock Get-AdObjectBySamAccountName {             # the login name belongs to a GROUP, not a user
+            return [PSCustomObject]@{
+                DistinguishedName = 'CN=dispatch,OU=Groups,DC=corp,DC=test'
+                objectClass       = 'group'
+                sAMAccountName    = 'dispatch'
+            }
+        }
+        Mock Get-ADUser { }
+        Mock Set-ADUser { }
+        Mock New-ADUser { }
+        Mock Write-SyncLog { }
+        Mock New-SecureRandomPassword { return ('Password123!' | ConvertTo-SecureString -AsPlainText -Force) }
+    }
+
+    AfterAll {
+        $script:DryRun = $false
+        $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false }
+    }
+
+    It 'skips the user without creating or adopting when a group owns the SamAccountName' {
+        . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
+        Should -Invoke New-ADUser -Times 0
+        Should -Invoke Set-ADUser -Times 0
     }
 }

@@ -91,20 +91,34 @@ foreach ($gUser in $graphUsers) {
             $samAccount = $samLocal -replace '[^a-zA-Z0-9_-]', ''
             $samAccount = $samAccount.Substring(0, [Math]::Min($samAccount.Length, 20))
 
-            # -- Resolve collisions with pre-existing, unmanaged accounts -----
+            # -- Resolve collisions with pre-existing objects -----------------
             # Test-AdUserExists only matches accounts already stamped with this
-            # Azure OID. A pre-existing account can still collide two ways, and
-            # both otherwise reach New-ADUser and fail:
-            #   * same UPN            -> forest-wide UPN uniqueness ->
-            #                            'server is unwilling to process the request'
-            #   * same SamAccountName -> e.g. the account exists under an older
-            #                            UPN suffix -> 'The specified account
-            #                            already exists'
+            # Azure OID. A pre-existing object can still collide, and each case
+            # otherwise reaches New-ADUser and fails:
+            #   * a user with the same UPN  -> forest-wide UPN uniqueness ->
+            #                                  'server is unwilling to process the request'
+            #   * any object with the same sAMAccountName (a user under an older
+            #     UPN suffix, or a group/computer that owns the login name) ->
+            #     'The specified account/group already exists'
             # Check UPN first (forest-wide via GC, the strong identity signal),
-            # then the derived SamAccountName (target domain).
+            # then the sAMAccountName namespace (target domain, all object
+            # classes). A user is adoptable; a non-user holder is a hard name
+            # conflict we can neither create over nor adopt.
             $conflict = Get-AdUserByUpn -UserPrincipalName $gUser.UserPrincipalName -Server $adSrv
             if (-not $conflict) {
-                $conflict = Get-AdUserBySamAccountName -SamAccountName $samAccount -Server $adSrv
+                $samHolder = Get-AdObjectBySamAccountName -SamAccountName $samAccount -Server $adSrv
+                if ($samHolder) {
+                    if ($samHolder.objectClass -eq 'user') {
+                        $conflict = $samHolder
+                    } else {
+                        Write-SyncLog ("Skipping $($gUser.UserPrincipalName): SamAccountName " +
+                                       "'$samAccount' is already in use by a $($samHolder.objectClass) " +
+                                       "($($samHolder.DistinguishedName)). Cannot create or adopt; " +
+                                       "resolve the name conflict manually.") -Level WARN
+                        $stats.Conflicts++
+                        continue
+                    }
+                }
             }
 
             if ($conflict) {
@@ -117,9 +131,10 @@ foreach ($gUser in $graphUsers) {
                     continue
                 }
 
-                # Adopt in place. Re-fetch a writable, target-domain object by DN
-                # -- a forest-wide UPN hit that lives in another domain can't be
-                # adopted into this sync, and the re-fetch then returns nothing.
+                # Adopt in place. Re-fetch a writable, target-domain user object
+                # by DN -- a forest-wide UPN hit that lives in another domain
+                # can't be adopted into this sync, and the re-fetch returns
+                # nothing.
                 $adopt = Get-ADUser -Identity $conflict.DistinguishedName -Server $adSrv `
                                     -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled,
                                                 DisplayName, GivenName, Surname, EmailAddress,
