@@ -23,10 +23,10 @@ Write-SyncLog "=== Sync-Users started ==="
 $filterGroupId     = $cfg.Sync.FilterGroupId
 $licensedUsersOnly = $cfg.Sync.LicensedUsersOnly -eq $true
 
-# Opt-in (default false): when an Azure user's UPN already belongs to a
-# pre-existing on-prem account this tool didn't create, adopt that account
-# (stamp it with the Azure OID and manage it) instead of skipping. Read
-# defensively so configs predating this key default to false under StrictMode.
+# Opt-in (default false): when an Azure user collides with a pre-existing
+# on-prem account this tool didn't create, adopt that account (stamp it with
+# the Azure OID and manage it) instead of skipping. Read defensively so configs
+# predating this key default to false under StrictMode.
 $adoptExisting = $false
 if ($cfg.Sync.PSObject.Properties['AdoptExistingUsers']) {
     $adoptExisting = $cfg.Sync.AdoptExistingUsers -eq $true
@@ -82,37 +82,52 @@ foreach ($gUser in $graphUsers) {
         $existing = Test-AdUserExists -AzureObjectId $gUser.Id -Server $adSrv
 
         if (-not $existing) {
-            # -- Resolve UPN collisions with unmanaged accounts ---------------
+            # Compute the SamAccountName we would assign, up front -- it's needed
+            # both to detect a SamAccountName collision here and to create the
+            # account below. Strip characters not allowed in SamAccountName, then
+            # truncate via Math.Min so a sanitized value shorter than the original
+            # doesn't blow Substring with an ArgumentOutOfRangeException.
+            $samLocal   = $gUser.UserPrincipalName -replace '@.*', ''
+            $samAccount = $samLocal -replace '[^a-zA-Z0-9_-]', ''
+            $samAccount = $samAccount.Substring(0, [Math]::Min($samAccount.Length, 20))
+
+            # -- Resolve collisions with pre-existing, unmanaged accounts -----
             # Test-AdUserExists only matches accounts already stamped with this
-            # Azure OID. An account that exists with this UPN but no OID stamp
-            # (a pre-existing identity, or one created by another process) looks
-            # "new" here -- and because UPN uniqueness is enforced forest-wide,
-            # New-ADUser would fail with a cryptic 'server is unwilling to
-            # process the request'. Detect it up front (forest-wide, via the GC).
-            $upnConflict = Get-AdUserByUpn -UserPrincipalName $gUser.UserPrincipalName -Server $adSrv
-            if ($upnConflict) {
+            # Azure OID. A pre-existing account can still collide two ways, and
+            # both otherwise reach New-ADUser and fail:
+            #   * same UPN            -> forest-wide UPN uniqueness ->
+            #                            'server is unwilling to process the request'
+            #   * same SamAccountName -> e.g. the account exists under an older
+            #                            UPN suffix -> 'The specified account
+            #                            already exists'
+            # Check UPN first (forest-wide via GC, the strong identity signal),
+            # then the derived SamAccountName (target domain).
+            $conflict = Get-AdUserByUpn -UserPrincipalName $gUser.UserPrincipalName -Server $adSrv
+            if (-not $conflict) {
+                $conflict = Get-AdUserBySamAccountName -SamAccountName $samAccount -Server $adSrv
+            }
+
+            if ($conflict) {
                 if (-not $adoptExisting) {
-                    Write-SyncLog ("Skipping $($gUser.UserPrincipalName): an AD account with this UPN " +
-                                   "already exists ($($upnConflict.DistinguishedName)) and is not managed " +
-                                   "by this tool. Set Sync.AdoptExistingUsers = true to adopt it, or " +
-                                   "resolve the conflict manually.") -Level WARN
+                    Write-SyncLog ("Skipping $($gUser.UserPrincipalName): a pre-existing AD account " +
+                                   "($($conflict.DistinguishedName)) collides on UPN or SamAccountName " +
+                                   "($samAccount) and is not managed by this tool. Set " +
+                                   "Sync.AdoptExistingUsers = true to adopt it, or resolve manually.") -Level WARN
                     $stats.Conflicts++
                     continue
                 }
 
-                # Adopt: only an account in the target domain can be adopted in
-                # place -- a forest-wide GC hit in another domain can't be pulled
-                # into this sync. Re-fetch from the configured (writable) server
-                # by UPN, loading the same properties the update diff needs.
-                $adopt = Get-ADUser -Filter "UserPrincipalName -eq '$($gUser.UserPrincipalName)'" `
-                                    -Server $adSrv `
+                # Adopt in place. Re-fetch a writable, target-domain object by DN
+                # -- a forest-wide UPN hit that lives in another domain can't be
+                # adopted into this sync, and the re-fetch then returns nothing.
+                $adopt = Get-ADUser -Identity $conflict.DistinguishedName -Server $adSrv `
                                     -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName, Enabled,
                                                 DisplayName, GivenName, Surname, EmailAddress,
                                                 Department, Title, MobilePhone, Office, Company `
                                     -ErrorAction SilentlyContinue
                 if (-not $adopt) {
                     Write-SyncLog ("Cannot adopt $($gUser.UserPrincipalName): the colliding account " +
-                                   "($($upnConflict.DistinguishedName)) is not in the target domain " +
+                                   "($($conflict.DistinguishedName)) is not in the target domain " +
                                    "($adSrv). Skipping.") -Level WARN
                     $stats.Conflicts++
                     continue
@@ -126,12 +141,25 @@ foreach ($gUser in $graphUsers) {
                     continue
                 }
 
+                # Stamp the OID and, when the account carries a different UPN
+                # (e.g. an older on-prem suffix), align it to the Azure UPN so the
+                # adopted account mirrors Azure like a freshly-created one.
+                $adoptSet = @{
+                    Identity = $adopt.DistinguishedName
+                    Server   = $adSrv
+                    Replace  = @{ 'msDS-cloudExtensionAttribute1' = $gUser.Id }
+                }
+                $upnNote = ''
+                if ($adopt.UserPrincipalName -ne $gUser.UserPrincipalName) {
+                    $adoptSet['UserPrincipalName'] = $gUser.UserPrincipalName
+                    $upnNote = " (UPN $($adopt.UserPrincipalName) -> $($gUser.UserPrincipalName))"
+                }
+
                 if ($script:DryRun) {
-                    Write-SyncLog "Would adopt existing account: $($gUser.UserPrincipalName) ($($adopt.DistinguishedName)) - stamp Azure OID $($gUser.Id)"
+                    Write-SyncLog "Would adopt existing account: $($adopt.DistinguishedName) - stamp Azure OID $($gUser.Id)$upnNote"
                 } else {
-                    Set-ADUser -Identity $adopt.DistinguishedName -Server $adSrv `
-                               -Replace @{ 'msDS-cloudExtensionAttribute1' = $gUser.Id }
-                    Write-SyncLog "Adopted existing account: $($gUser.UserPrincipalName) ($($adopt.DistinguishedName)) - stamped Azure OID $($gUser.Id)" -Level WARN
+                    Set-ADUser @adoptSet
+                    Write-SyncLog "Adopted existing account: $($adopt.DistinguishedName) - stamped Azure OID $($gUser.Id)$upnNote" -Level WARN
                 }
                 $stats.Adopted++
                 # Reconcile attributes this run by flowing into the update path.
@@ -140,16 +168,7 @@ foreach ($gUser in $graphUsers) {
         }
 
         if (-not $existing) {
-            # -- Create new AD user -------------------------------------------
-            # Strip characters not allowed in SamAccountName (e.g. apostrophes, dots,
-            # spaces) before truncating, matching the sanitization Sync-Groups.ps1
-            # already applies to group names. Truncate via Math.Min so a sanitized
-            # value shorter than the original doesn't blow Substring with an
-            # ArgumentOutOfRangeException.
-            $samLocal   = $gUser.UserPrincipalName -replace '@.*', ''
-            $samAccount = $samLocal -replace '[^a-zA-Z0-9_-]', ''
-            $samAccount = $samAccount.Substring(0, [Math]::Min($samAccount.Length, 20))
-
+            # -- Create new AD user (uses $samAccount computed above) ----------
             $newUserParams = @{
                 Server                 = $adSrv
                 Path                   = $targetOU
