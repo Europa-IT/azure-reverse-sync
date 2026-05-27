@@ -112,6 +112,7 @@ Describe 'Sync-Users (DryRun)' -Tag 'Unit' {
             )
         }
         Mock Test-AdUserExists { return $null }
+        Mock Get-AdUserByUpn { return $null }
         Mock New-ADUser { }
         Mock Set-ADUser { }
         Mock Write-SyncLog { }
@@ -122,6 +123,101 @@ Describe 'Sync-Users (DryRun)' -Tag 'Unit' {
 
     It 'does not call New-ADUser in DryRun mode' {
         . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
+        Should -Invoke New-ADUser -Times 0
+    }
+}
+
+Describe 'Sync-Users UPN conflict (AdoptExistingUsers = false)' -Tag 'Unit' {
+
+    BeforeAll {
+        $script:DryRun = $false
+        Mock Get-MgUser {
+            return @(
+                [PSCustomObject]@{
+                    Id = 'azure-oid-777'; DisplayName = 'Dave Conflict'; GivenName = 'Dave';
+                    Surname = 'Conflict'; UserPrincipalName = 'dave@corp.test'; Mail = 'dave@corp.test';
+                    Department = ''; JobTitle = ''; MobilePhone = ''; OfficeLocation = '';
+                    CompanyName = ''; AccountEnabled = $true
+                }
+            )
+        }
+        Mock Test-AdUserExists { return $null }       # not yet managed by this tool
+        Mock Get-AdUserByUpn {                          # but a pre-existing account owns the UPN
+            return [PSCustomObject]@{
+                DistinguishedName               = 'CN=Dave,OU=Staff,DC=corp,DC=test'
+                UserPrincipalName               = 'dave@corp.test'
+                'msDS-cloudExtensionAttribute1' = $null
+            }
+        }
+        Mock New-ADUser { }
+        Mock Set-ADUser { }
+        Mock Write-SyncLog { }
+        Mock New-SecureRandomPassword { return ('Password123!' | ConvertTo-SecureString -AsPlainText -Force) }
+    }
+
+    AfterAll { $script:DryRun = $false }
+
+    It 'does not create or modify a user when the UPN exists and adoption is off' {
+        . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
+        Should -Invoke New-ADUser -Times 0
+        Should -Invoke Set-ADUser -Times 0
+    }
+}
+
+Describe 'Sync-Users UPN conflict (AdoptExistingUsers = true)' -Tag 'Unit' {
+
+    BeforeAll {
+        $script:DryRun = $false
+        $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false; AdoptExistingUsers = $true }
+        Mock Get-MgUser {
+            return @(
+                [PSCustomObject]@{
+                    Id = 'azure-oid-888'; DisplayName = 'Erin Adopt'; GivenName = 'Erin';
+                    Surname = 'Adopt'; UserPrincipalName = 'erin@corp.test'; Mail = 'erin@corp.test';
+                    Department = ''; JobTitle = ''; MobilePhone = ''; OfficeLocation = '';
+                    CompanyName = ''; AccountEnabled = $true
+                }
+            )
+        }
+        Mock Test-AdUserExists { return $null }       # no OID-stamped account yet
+        Mock Get-AdUserByUpn {                          # pre-existing account owns the UPN (forest-wide hit)
+            return [PSCustomObject]@{
+                DistinguishedName               = 'CN=Erin,OU=Staff,DC=corp,DC=test'
+                UserPrincipalName               = 'erin@corp.test'
+                'msDS-cloudExtensionAttribute1' = $null
+            }
+        }
+        Mock Get-ADUser {                               # target-domain re-fetch for adoption
+            return [PSCustomObject]@{
+                DistinguishedName               = 'CN=Erin,OU=Staff,DC=corp,DC=test'
+                UserPrincipalName               = 'erin@corp.test'
+                Enabled                         = $true
+                DisplayName                     = 'Erin Adopt'
+                GivenName                       = 'Erin'
+                Surname                         = 'Adopt'
+                EmailAddress                    = 'erin@corp.test'
+                Department                      = $null
+                Title                           = $null
+                MobilePhone                     = $null
+                Office                          = $null
+                Company                         = $null
+                'msDS-cloudExtensionAttribute1' = $null
+            }
+        }
+        Mock Set-ADUser { }
+        Mock New-ADUser { }
+        Mock Write-SyncLog { }
+        Mock New-SecureRandomPassword { return ('Password123!' | ConvertTo-SecureString -AsPlainText -Force) }
+    }
+
+    AfterAll {
+        $script:DryRun = $false
+        $script:Config.Sync = [PSCustomObject]@{ DryRun = $false; FilterGroupId = ''; LicensedUsersOnly = $false }
+    }
+
+    It 'stamps the Azure OID via Set-ADUser and does not create a new user' {
+        . (Join-Path (Split-Path $PSScriptRoot -Parent) 'src\Sync-Users.ps1')
+        Should -Invoke Set-ADUser -Times 1
         Should -Invoke New-ADUser -Times 0
     }
 }

@@ -3,11 +3,11 @@
     Shared helper module for azure-reverse-sync.
 .DESCRIPTION
     Provides logging helpers (Write-SyncLog, Write-TaskLog), config loader
-    (Get-SyncConfig), AD lookup helpers (Test-AdUserExists, Test-AdGroupExists),
-    Graph-to-AD attribute mapping (ConvertTo-AdAttributes), and password
-    generation (New-RandomPassword, New-SecureRandomPassword). Owns module-
-    scope state shared across logging calls: $script:DryRun, $script:Config,
-    $script:RunStamp, $script:RetentionDone.
+    (Get-SyncConfig), AD lookup helpers (Test-AdUserExists, Get-AdUserByUpn,
+    Test-AdGroupExists), Graph-to-AD attribute mapping (ConvertTo-AdAttributes),
+    and password generation (New-RandomPassword, New-SecureRandomPassword). Owns
+    module-scope state shared across logging calls: $script:DryRun,
+    $script:Config, $script:RunStamp, $script:RetentionDone.
 #>
 
 Set-StrictMode -Version Latest
@@ -332,6 +332,42 @@ function Test-AdUserExists {
     }
 }
 
+# -- Get-AdUserByUpn ----------------------------------------------------------
+function Get-AdUserByUpn {
+    <#
+    .SYNOPSIS
+        Returns the AD user whose UserPrincipalName matches, searched forest-wide
+        via the Global Catalog, or $null if none exists.
+    .DESCRIPTION
+        UPN uniqueness is enforced across the whole forest, so a collision with a
+        sync-created account can live in any domain -- not just the one we write
+        to. Querying the Global Catalog (port 3268) catches all of them. Used by
+        Sync-Users.ps1 to detect a pre-existing account that would otherwise make
+        New-ADUser fail with a cryptic UNWILLING_TO_PERFORM error.
+    .PARAMETER UserPrincipalName
+        The UPN to look up.
+    .PARAMETER Server
+        A domain or DC name. ':3268' is appended to target the Global Catalog
+        unless a port is already specified.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$UserPrincipalName,
+        [Parameter(Mandatory)][string]$Server
+    )
+
+    $gcServer = if ($Server -match ':\d+$') { $Server } else { "${Server}:3268" }
+    try {
+        $user = Get-ADUser -Filter "UserPrincipalName -eq '$UserPrincipalName'" `
+                           -Server $gcServer `
+                           -Properties 'msDS-cloudExtensionAttribute1', UserPrincipalName `
+                           -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+        return $user
+    } catch {
+        return $null
+    }
+}
+
 # -- Test-AdGroupExists -------------------------------------------------------
 function Test-AdGroupExists {
     <#
@@ -413,6 +449,7 @@ Export-ModuleMember -Function @(
     'Get-SyncConfig',
     'ConvertTo-AdAttributes',
     'Test-AdUserExists',
+    'Get-AdUserByUpn',
     'Test-AdGroupExists',
     'New-RandomPassword',
     'New-SecureRandomPassword'
