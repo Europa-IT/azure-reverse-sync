@@ -3,9 +3,6 @@ config/sync-config.json
 *.pfx
 *.p12
 
-# Kerberos keytabs — never commit, ACL to service account only
-*.keytab
-
 # Logs
 logs/*.log
 logs/*.txt
@@ -14,7 +11,5 @@ logs/*.txt
 *.psd1.bak
 
 # Editor
-.vscode/
-*.suo
 *.user
-/.claude/worktrees
+/.claude
